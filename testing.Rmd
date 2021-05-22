@@ -1,0 +1,92 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(dart)
+set.seed(1234)
+R <- pbgrad::r_geometric_complex(150, radius = 0.35, dim = 2, filtered = FALSE, coords = TRUE)
+dx <- dist(attr(R, "coords"))
+W <- dx[rankr::rank_comb(t(R$edges))]
+FI <- new(dart:::ImplicitFiltration, R$as_XPtr(), W)
+
+
+set.seed(1234)
+R <- pbgrad::r_geometric_complex(20, radius = 0.35, dim = 2, filtered = FALSE, coords = TRUE)
+W <- runif(R$n_simplices[1])
+FI <- new(dart:::ImplicitFiltration, R$as_XPtr(), W)
+
+all(FI$grading[order(FI$grading)] == sort(FI$grading))
+
+FI$simplex_ranks[FI$shortlex_perm+1L]
+FI$simplex_ranks[FI$shortlex_perm[FI$simplex_dims == 1]+1L]
+
+
+library(simplextree)
+di <- sapply(as.list(simplextree::level_order(R)), length)-1L
+
+
+all(dart:::inverse_permutation(a-1, x-1) == dart:::inverse_permutation2(x-1))
+
+tail(FI$simplices, 5)
+tail(R$simplices, 5)
+# W <- straverse(level_order(R), function(simplex){
+# 	if (length(simplex) <= 1){ return(0); }
+# 	if (length(simplex) == 2){
+# 		return(dx[rankr::rank_comb(matrix(simplex), n = R$n_simplices[1])])
+# 	}
+# 	return(max(dx[rankr::rank_comb(combn(simplex, 2), n = R$n_simplices[1])]))
+# })
+
+# c(4,6,8), n = 10
+# r <- 91
+# n <- 10
+# d <- 3
+# # 3, 5, 7
+# s <- (combn(10,3)-1L)[,110] - 1L
+# r <- 109
+# n <- 10
+# d <- 3
+
+set.seed(1234)
+x <- sample(seq(15)-1L)
+setup_expr <- quote({ 
+	set.seed(sample(1:100, size= 1))
+	x <- sample(seq(250000)-1L) 
+})
+microbenchmark::microbenchmark({ dart:::inverse_permutation(x) }, times = 100L, setup = eval(setup_expr))
+microbenchmark::microbenchmark({ dart:::inverse_permutation2(x) }, times = 100L, setup = eval(setup_expr))
+# dart:::inverse_permutation(x)
+# dart:::inverse_permutation2(x)
+
+## Combinadic mapping 
+# Original combinadic: http://math0.wvstateu.edu/~baker/cs405/code/Combinadics.html
+# Dual index: https://planetcalc.com/8594/?license=1
+unrank_cc <- function(r, k, n){
+	N <- choose(n, k)
+	ri <- (N-1L)-r
+  s <- vector("integer", length = k)
+  C <- lapply(seq(k), function(ki){ choose(0:n, k = ki) })
+  for (i in seq(length(s), 1L)){
+  	s[i] <- findInterval(x = ri, vec = C[[k]])-1L
+  	ri <- ri - C[[k]][s[i]+1L]
+  	k <- k - 1L
+  }
+  s <- (n-1L) - s
+  return(rev(s))
+}
+sapply(seq(0, choose(10,3)-1L), function(r){ 
+	unrank_cc(r, k = 3, n = 10) 
+})+1
+
+
+
+a <- seq(0, 100, by = 5)
+dart:::test_binary_search(a, 51)
+
+```

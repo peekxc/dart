@@ -1,0 +1,473 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+cylinder <- tdaunif::sample_cylinder_elliptical(120)
+sphere <- tdaunif::sample_2sphere(120)
+
+rgl::plot3d(cylinder)
+```
+
+
+```{r}
+torus <- function(u,v,R=1,r=0.5){
+	uv <- sapply(c(u,v), function(x){ with(list(q=x/(2*pi)), { (q - floor(q))*(2*pi) }) })
+	x <- (R + r*cos(uv[1]))*cos(uv[2])
+	y <- (R + r*cos(uv[1]))*sin(uv[2])
+	z <- r*sin(uv[1])
+	cbind(x,y,z)
+}
+R <- 4
+r <- 2
+
+
+misc3d::contour3d()
+
+```
+
+```{r}
+
+
+
+
+## Function to generate a pixel image of an expanding annulus 
+pixel_circle <- function(n){
+
+	## Precompute center of each pixel + indices to index with 
+	indices <- as.matrix(do.call(expand.grid, lapply(c(n,n), seq)))
+	centers <- t(replicate(prod(c(n,n)), c(0.5, 0.5)) + t(indices)) - 1L
+	x_dist <- proxy::dist(centers, matrix(c(n,n)/2.0, ncol = 2))/((n/2.0)*sqrt(2))
+	
+	## Return a function
+	function(radius, width=0.15, e=-3.85){
+		I <- matrix(0, nrow = n, ncol = n)
+		I[indices] <- exp(e*(abs(x_dist - radius)/width))
+		return(I)
+	}
+}
+
+circle <- pixel_circle(9)
+bw <- gray.colors(256, start = 0, end = 1.0)
+params <- list(xaxt = "n", yaxt = "n", asp = 1, oma = rep.int(0, 4), bty="n")
+params <- modifyList(params, list(zlim = c(0, 1))) ## whether to add z-domain 
+
+# animation::saveGIF({
+# 	for (r in seq(0, 1, length.out = 100)){
+# 		I <- circle(radius = r, width = 0.15)
+# 		do.call(image, modifyList(params, list(x=I, col = bw)))
+# 	}
+# }, movie.name = "circle9.gif", interval = 0.05)
+
+## Plot lines
+images <- lapply(seq(0, 1, length.out = 100), function(r) { circle(radius = r, width = 0.15) })
+images <- lapply(images, as.vector)
+images <- do.call(rbind, images)
+colors <- rainbow(81)
+plot.default(NULL, NULL, xlim = c(0, 101), ylim = c(0,1))
+for (i in seq(ncol(images))){
+	lines(cbind(seq(100), images[,i]*(0.01/images[,i])), col = colors[i])
+	#readline("")
+}
+
+image_complex <- function(M, eps = max(M)){
+	nv <- prod(dim(M))
+	v_ranks <- seq(nv)
+	vertex_pos <- rankr::unrank_grid(seq(v_ranks), dims = dim(M))
+	
+	u <- rbind(vertex_pos[1,], vertex_pos[2,]+1)
+	r <- rbind(vertex_pos[1,]+1, vertex_pos[2,])
+	d <- rbind(vertex_pos[1,]+1, vertex_pos[2,]+1)
+	
+	## Compute triangles
+	invalid <- function(x){ any((x < 1) | x > dim(M)) }
+	valid <- !apply(u, 2, invalid) & !apply(r, 2, invalid) & !apply(d, 2, invalid)
+	vu <- rankr::rank_grid(u[,valid,drop=FALSE], dims = dim(M))
+	vr <- rankr::rank_grid(r[,valid,drop=FALSE], dims = dim(M))
+	vd <- rankr::rank_grid(d[,valid,drop=FALSE], dims = dim(M))
+	tri <- cbind(rbind(seq(nv)[valid], vu, vr), rbind(vu, vr, vd))
+
+	st <- simplex_tree(matrix(seq(nv), nrow = 1)) %>% insert(tri)
+	simplices <- ltraverse(level_order(st), identity)
+	
+	v_w <- M[t(vertex_pos)]
+	e_w <- apply(st$edges, 1, function(idx) max(v_w[idx]))
+	t_w <- apply(st$triangles, 1, function(idx) max(v_w[idx]))
+	s_w <- c(v_w, e_w, t_w)
+	
+	lo <- phtools:::order_simplices(simplices, s_w)+1L
+	f_w <- s_w[lo]
+	f_s <- simplices[lo]
+	return(list(filtration=f_s, weights=f_w, lex_idx=Matrix::invPerm(lo)))
+}
+
+c1 <- circle(0)
+c2 <- circle(0.05)
+
+c1 <- circle(0.50)
+ic2 <- image_complex(1.0 - c1)
+st <- simplextree::simplex_tree(ic2$filtration)
+D <- pbgrad::boundary_matrix(st)
+lo <- match(colnames(D), unlist(simplex_to_str(ic2$filtration)))
+D <- D[Matrix::invPerm(lo), Matrix::invPerm(lo)]
+rv <- pbgrad::reduce(D, show_progress = TRUE)
+
+## Vineyards 
+time <- seq(0, 1, length.out = 10)
+IC <- lapply(time, function(ti) image_complex(1.0 - circle(ti)))
+fs <- lapply(IC, function(ic){ ic$filtration })
+fw <- lapply(IC, function(ic){ ic$weights })
+
+schedules <- lapply(seq(length(time)-1L), function(i){
+	print(i)
+	vineyards_schedule(fs[[i]], fs[[i+1]], fw[[i]], fw[[i+1]])
+})
+
+# n <- 50
+# vineyards_schedule(K0 = as.list(seq(n)), K1 = as.list(rev(seq(n))), w0 = 1:n, w1 = 1:n)
+
+lapply()
+apply(schedules[[1]], 2, min)
+
+# transposition_schedule(k0 = filtrations[[1]], k1 = filtrations[[2]], 
+# 											 dx0 = filt_weights[[1]], dx1 = filt_weights[[2]])
+# 
+# ic <- image_complex(1.0 - circle(0))
+S <- do.call(cbind, schedules)
+st <- simplextree::simplex_tree(IC[[1]]$filtration)
+D <- pbgrad::boundary_matrix(st)
+lo <- match(colnames(D), unlist(simplex_to_str(IC[[1]]$filtration)))
+D <- D[Matrix::invPerm(lo), Matrix::invPerm(lo)]
+rv <- pbgrad::reduce(D, show_progress = TRUE)
+statuses <- rep(NA, ncol(S))
+i <- 1L
+res <- phtools:::simulate_vineyard(R = rv$R, V = rv$V, S = S, f = function(R, V, D, status, column){
+	statuses[[i]] <<- status
+	i <<- i + 1L
+}, D = D, progress = TRUE)
+
+status_costs <- c(2,2,0,1,2,0,2,0,1)
+sum(status_costs[statuses])
+
+red_costs <- rep(NA, ncol(S))
+Dc <- D
+for (i in seq(ncol(S))){
+	idx <- S[,i]
+	indices <- seq(nrow(D))
+	indices[idx] <- rev(idx)
+	Dc <- Dc[indices, indices]
+	red_costs[i] <- pbgrad::reduce(Dc, show_progress = FALSE)$nc
+	print(i)
+}
+
+## Plot of cost of phCol vs. vineyards
+n <- length(vineyards_cost)
+vineyards_cost <- c(rv$nc, status_costs[statuses])
+phcol_costs <- c(rv$nc, red_costs)
+
+dev.off()
+fig_height <- 674*0.14
+fig_width <- 426*0.33
+height_inches <- grid::convertUnit(grid::unit(3.1*fig_height, "pt"), unitTo = "inches")
+width_inches <- grid::convertUnit(grid::unit(3.1*fig_width, "pt"), unitTo = "inches")
+tiff("test.tiff", units="in", width=width_inches, height=height_inches, res=300)
+par(mar=c(2.7, 3.4, 1.5, 0.1))
+plot(log10(cumsum(phcol_costs)), type = "l", main = "", axes = FALSE, ylab = "", xlab = "", lwd = 1.2)
+mtext(side=1, text="Time index", line =1.55)
+mtext(side=2, text="Column operations (cum., log-scale)", line=2.10)
+mtext("Dynamic Persistence cost: 9x9 circle image data set", padj = -0.8)
+grid(col = adjustcolor("gray", alpha.f = 0.80))
+lines(log10(cumsum(vineyards_cost)), col = "blue", lwd = 1.8)
+box(which = "outer", lwd = 2)
+time <- seq(from = 1, to = n, by = floor(ncol(S)/100))
+lines(cbind(time, log10(cumsum(phcol_costs[time]))), col = "purple", lwd = 1.8)
+points(cbind(time, log10(cumsum(phcol_costs[time]))), pch = 3, cex = 0.45)
+
+time <- seq(from = 1, to = n, by = floor(ncol(S)/10))
+lines(cbind(time, log10(cumsum(phcol_costs[time]))), col = "green", lwd = 1.8)
+points(cbind(time, log10(cumsum(phcol_costs[time]))), pch = 4, cex = 0.45)
+
+legend(matrix(c(55230.15, 7.021122), ncol = 2), 
+			 legend = c("Vineyards", "pHcol (10)", "pHcol (100)", "pHcol (all)"), 
+			 col = c("blue", "green", "purple", "black"), border = TRUE, lwd = 2.8, cex = 0.70, 
+			 y.intersp = 1.2)
+y_ticks <- sapply(3:7, function(x){ parse(text = sprintf("10^%d", x)) })
+x_ticks <- c(0, sapply(1:7, function(x){ parse(text=sprintf("%d%%*%%10^{%d}", x, 4)) }))
+axis(side = 2, at = (3:7), labels = y_ticks, las = 1, hadj = 0.5, tick = FALSE, padj = 0.4)
+axis(side = 1, at = c(0, seq(10000, 70000, length = 7)), labels = x_ticks, cex.axis = 0.80, padj = -0.9)
+dev.off()
+
+
+## Plot the complex
+dev.off()
+png(filename="circle_complex.png", width = 1562, height = 586, units='px', res = 180)
+layout(matrix(1:10, nrow = 2, byrow = TRUE))
+par(mar=c(0,0.10,0.10,0.10))
+time <- seq(0, 0.90, length = 5)
+for (ti in time){
+	I <- circle(radius = ti, width = 0.15)
+	do.call(image, modifyList(params, list(x=I, col = bw)))
+}
+for (ti in time){
+	ic <- image_complex(1.0 - circle(radius = ti, width = 0.15))
+	fi <- ic$filtration
+	st <- simplextree::simplex_tree(fi)
+	coords <- environment(circle)[["indices"]]
+	v_idx <- sort(unlist(fi[sapply(fi, length) == 1]))
+	
+	
+	sc_col <- straverse(level_order(st), function(simplex){
+	   idx <- match(list(simplex), fi)
+	   bin <- findInterval(ic$weights[idx], vec = seq(1, 256)/256, all.inside = TRUE)
+	   bin <- min(max(c(bin, 1L)), 255)
+	   sc <- bw[(length(bw)-bin)]
+	   sc <- adjustcolor(sc, alpha.f = 1.0)
+	   if (ic$weights[idx] <= 0.998){ #quantile(ic$weights, 0.30)
+	   	return(colorspace::lighten(sc, amount = 0.40))
+	   } else {
+	   	return(adjustcolor(sc, alpha.f = 0.70))
+	   }
+	})
+	simplextree:::plot.Rcpp_SimplexTree(
+		st, coords = coords[v_idx,], 
+		text_opt = list(labels = ""),
+		polygon_opt = list(border = "black", lwd = 2.6),
+		vertex_opt = list(cex = 1.1, pch = 21, lwd = 1.0, bg = sc_col[v_idx], col = "black"), 
+		color_pal = sc_col
+	)
+}
+dev.off()
+
+## Plot the diagram
+dgm <- pbgrad::extract_pairs(rv$R, values = ic2$weights, collapse = TRUE, essential = TRUE)
+pbgrad::plot_dgm(dgm)
+
+## Plot the complex
+f1 <- ic2$filtration[ic2$weights <= 0.10] # quantile(ic2$weights, 0.10)
+st <- simplextree::simplex_tree(f1)
+coords <- environment(circle)[["indices"]]
+v_idx <- sort(unlist(f1[sapply(f1, length) == 1]))
+plot(st, coords = coords[v_idx,])
+
+# TDAstats::calculate_homology(iris[,1:4])
+
+ic1 <- image_complex(c1)
+ic2 <- image_complex(c2)
+
+rankr::kendall_dist(colnames(ic1), colnames(ic2))
+
+rankr::kendall_dist(match(colnames(ic2), colnames(ic1)))
+
+# M <- circle(0.5)
+# ic <- image_complex(max(M) - M)
+# rv <- pbgrad::reduce(simplextreic$filtration, show_progress = TRUE)
+
+
+dims <- unname(sapply(str_to_simplex(colnames(rv$R)), length))
+dgm <- cbind(dims[rv$P[,1]]-1L, rv$P)
+
+dgm_s <- cbind(dgm[,1], ic2$weights[dgm[,2]], ic2$weights[dgm[,3]])
+dgm_s <- rbind(dgm_s, cbind(dims[rv$E]-1L, rv$E, Inf))
+pbgrad::plot_dgm(dgm_s)
+
+
+f1 <- ic1$filtration[ic1$weights <= mean(ic1$weights)]
+st <- simplextree::simplex_tree(f1)
+
+coords <- environment(circle)[["indices"]]
+
+v_idx <- sort(unlist(f1[sapply(f1, length) == 1]))
+
+plot(st, coords = coords[v_idx,])
+
+dgm_cube <- ripserr::cubical(dataset = max(circle(0.50)) - circle(0.50))
+pbgrad::plot_dgm(as.matrix(dgm_cube))
+
+do.call(image, modifyList(params, list(x=circle(0.50), col = bw)))
+# normalize <- function(x){ (x - min(x))/(diff(range(x))) }
+# bin_color <- function(x, col){
+# 	stopifnot(is.numeric(x))
+# 	col[findInterval(normalize(x), vec = seq(0.0, 1.0, length.out = length(bw)), all.inside = TRUE)]
+# }
+# exp_decay <- abs(x_dist - r)*(1.0 - 0.10)^(alpha/10)
+# I[indices] <- bin_color(max(exp_decay) - exp_decay, bw)
+# image(I, col = "#000000", xlim = c(0, 1), ylim = c(0,1), xaxt = "n", yaxt = "n", asp = 1, 
+# 			oma = rep.int(0.5, 4), bty="n")
+# seq(0, 2*pi , length.out = 14)
+# plot(as.raster(I))
+# points(centers, col = center_col, pch = 20, cex = 0.25)
+# points(centers[center_col != "#000000",], col = "orange", pch = 20, cex = 0.25)
+# segments(x0 = 0, y0 = nrow(I)/2, x1 = ncol(I)*c(0.10), y1 = nrow(I)/2, col = "red")
+# 
+# plot(as.raster(I))
+# plot(raster(I), xlim = c(0, 1), ylim = c(0,1), xaxt = "n", yaxt = "n", asp = 1, oma = rep.int(0.5, 4), bty="n")
+# # points(centers, col = "white", pch = 20, cex = 0.25)
+# 
+# img <- raster(raster::extent(c(1,5,1,5)), ncol = 5, nrow = 5)
+# raster::values(img) <- max(exp_decay) - exp_decay
+```
+
+```{r Move schedule costs}
+library(phtools)
+## move schedules can have dramatically different costs 
+circle <- pixel_circle(9)
+tau <- seq(0, 1, by = 0.025)
+schedules <- lapply(1:(length(tau)-1L), function(i){
+	ic0 <- image_complex(1-circle(tau[i]))
+	ic1 <- image_complex(1-circle(tau[i+1]))
+	p <- seq_along(ic0$filtration)
+	q <- match(ic1$filtration, ic0$filtration)
+	lcs <- perm_lcs(p,q)
+	P <- as.matrix(permutations::rperm(150, r = length(p) - length(lcs)))
+	ms <- lapply(seq(nrow(P)), function(i){
+		 strat <- sample(c("earliest", "latest", "closest", "furthest"))[1]
+		 ms <- move_sequence(symbols = setdiff(p, lcs)[P[i,]], s = p, t = q, lcs = lcs, 
+		 										ordered = TRUE, rule = strat)
+		 return(ms[[1]]$moves)
+	})
+	return(ms)
+})
+schedules <- lapply(seq(150), function(j){
+	do.call(cbind, lapply(1:length(schedules), function(i){ schedules[[i]][[j]] }))
+})
+
+ic0 <- image_complex(1-circle(0))
+D <- boundary_matrix(ic0$filtration)
+RV <- pbgrad::reduce(D)
+all_costs <- list()
+for (i in seq_along(schedules)){
+	costs <- c()
+	R <- RV$R
+	V <- RV$V
+	for (j in 1:ncol(schedules[[i]])){
+		new_rv <- phtools::move_decomp(R, V, i = schedules[[i]][1,j], j = schedules[[i]][2,j])
+		R <- new_rv$R
+		V <- new_rv$V
+		costs <- c(costs, new_rv$m)
+	}
+	all_costs[[i]] <- costs
+	print(i)
+}
+min_idx <- which(sapply(all_costs, sum) == min(sapply(all_costs, sum)))
+
+wut <- lapply(1:(length(tau)-1L), function(i){
+	ic0 <- image_complex(1-circle(tau[i]))
+	ic1 <- image_complex(1-circle(tau[i+1]))
+	p <- seq_along(ic0$filtration)
+	q <- match(ic1$filtration, ic0$filtration)
+	lcs <- perm_lcs(p,q)
+	gs <- greedy_min_cross(p,q,lcs, use_lcs = FALSE)
+	return(gs)
+})
+gs <- do.call(cbind, wut)
+# gs <- greedy_min_cross(p,q,lcs)
+
+R <- RV$R
+V <- RV$V
+costs <- c()
+for (j in 1:ncol(gs)){
+	new_rv <- phtools::move_decomp(R, V, i = gs[1,j], j = gs[2,j])
+	R <- new_rv$R
+	V <- new_rv$V
+	costs <- c(costs, new_rv$m)
+}
+		 
+is <- lapply(1:(length(tau)-1L), function(i){
+	ic0 <- image_complex(1-circle(tau[i]))
+	ic1 <- image_complex(1-circle(tau[i+1]))
+	p <- seq_along(ic0$filtration)
+	q <- match(ic1$filtration, ic0$filtration)
+	insertion_sort(q)$P
+})
+is <- do.call(cbind, is)
+
+costs <- c()
+R <- RV$R
+V <- RV$V
+for (j in 1:ncol(is)){
+	new_rv <- phtools::move_decomp(R, V, i = is[1,j], j = is[2,j])
+	R <- new_rv$R
+	V <- new_rv$V
+	costs <- c(costs, new_rv$m)
+}
+
+## Moves based on selection sort
+natural_moves <- function(a, b){
+	m <- matrix(0, nrow = 2, ncol = 0)
+	for (i in seq_along(b)){
+		ti <- match(b[i], a)
+		m <- cbind(m, c(ti, i))
+		a <- permute_move(a, i = ti, j = i)
+	}
+	return(m)
+}
+ns <- lapply(1:(length(tau)-1L), function(i){
+	ic0 <- image_complex(1-circle(tau[i]))
+	ic1 <- image_complex(1-circle(tau[i+1]))
+	p <- seq_along(ic0$filtration)
+	q <- match(ic1$filtration, ic0$filtration)
+	s <- natural_moves(p, q)
+	return(s[,apply(s, 2, diff) != 0,drop=FALSE])
+})
+ns <- do.call(cbind, ns)
+costs <- c()
+R <- RV$R
+V <- RV$V
+for (j in 1:ncol(ns)){
+	new_rv <- phtools::move_decomp(R, V, i = ns[1,j], j = ns[2,j])
+	R <- new_rv$R
+	V <- new_rv$V
+	costs <- c(costs, new_rv$m)
+}
+
+R <- RV$R
+V <- RV$V
+for (i in seq(nrow(P))){
+	V[,P[i,1]] <- R[,P[i,2]]
+}
+all(((D %*% V) %% 2 - R) == 0)
+P <- pbgrad::pivots(RV$R)
+```
+
+
+```{r}
+## Example showing variability of moves w/ insertion sort, bubble sort, etc. 
+bubble_sort <- function(x){
+	if (length(x) <= 1){ return(matrix(0, nrow = 2, ncol = 0)) }
+	m <- matrix(0, ncol = 0, nrow = 2)
+	sx <- sort(x)
+	while(any(x != sx)){
+		for (i in seq(length(x)-1L)){
+			if (x[i] > x[i+1]){
+				x[c(i,i+1)] <- x[c(i+1,i)]
+				m <- cbind(m, c(i, i+1L))
+			}
+		}
+	}
+	return(m)
+}
+is <- lapply(seq(length(tau)-1L), function(i){
+	ic0 <- image_complex(1-circle(tau[i]))
+	ic1 <- image_complex(1-circle(tau[i+1]))
+	p <- seq_along(ic0$filtration)
+	match(ic1$filtration, ic0$filtration)
+})
+
+lapply(seq(length(tau)-1L), function(i){
+	bubble_sort(is[[i]])
+})
+
+ic0 <- image_complex(1-circle(0))
+D <- boundary_matrix(ic0$filtration)
+RV <- pbgrad::reduce(D)
+
+execute_schedule()
+
+# coarsen_schedule <- function(M){
+# 	mr <- rle(is[2,1:(ncol(is)-1L)] == is[1,2:ncol(is)])
+# }
+```
+
+

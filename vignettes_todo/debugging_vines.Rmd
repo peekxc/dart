@@ -1,0 +1,180 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+S <- cbind(c(1,2,3), c(1,3,4))
+st <- simplextree::simplex_tree(S)
+D <- pbgrad::boundary_matrix(st) %% 2
+p <- c(2,1,3,4,5, 8, 7, 9, 6, 11, 10)
+RV <- pbgrad::reduce(D[p,p], "mod2")
+i <- 8 
+
+R <- RV$R
+V <- RV$V
+
+low <- apply(R, 2, phtools:::low_entry)
+k <- which(low == i)
+l <- which(low == i+1)
+R[i,l] != 0
+
+if (R[i,l] != 0){
+	Rp <- permute_move(R, i, i+1)
+	Vp <- permute_move(V, i, i+1)
+	
+	Rp[,l] <- (Rp[,k] + Rp[l]) %% 2
+	Vp[,l] <- (Vp[,k] + Vp[l]) %% 2
+}
+
+
+pbgrad:::is_reduced(Rp)
+all((permute_move(D, i, i+1) %*% Vp) %% 2 == Rp)
+```
+
+
+Simulate vineyards random permutations
+```{r}
+R <- pbgrad::r_geometric_complex(6, radius = 0.15, dim = 2, filtered = TRUE)
+S <- unlist(simplex_to_str(R$simplices))
+Q <- sample_filtration(S)
+D <- pbgrad::boundary_matrix(R)
+
+TS <- insertion_sort(match(S, Q))$P
+all(Q == compose(S, M = TS))
+
+RV <- pbgrad::reduce(D)
+
+Rij <- Matrix::which(RV$R != 0, arr.ind = TRUE)-1L
+Vij <- Matrix::which(RV$V != 0, arr.ind = TRUE)-1L
+Rp <- phtools::psp_matrix(dim(RV$R), i = Rij[,1], j = Rij[,2], x = rep(1, nrow(Rij)))
+Vp <- phtools::psp_matrix(dim(RV$V), i = Vij[,1], j = Vij[,2], x = rep(1, nrow(Vij)))
+
+
+# all(Rp$as.Matrix() == (RV$R %% 2))
+
+schedule <- apply(TS, 2, min)
+
+Dp <- lapply(seq(ncol(TS)), function(i){
+	compose(D %% 2, TS[,1:i,drop=FALSE])
+})
+
+i <- 1L
+results <- vector(mode = "list", length = length(schedule))
+phtools:::transpose_schedule_R(Rp = Rp$as_XPtr(), Vp = Vp$as_XPtr(), S = schedule-1L, 
+	f = function(Rn, Vn, s){
+	# if (i == 11){ browser() }
+	results[[i]] <<- list(R = Rn, V = Vn, s = s)
+	ir <- pbgrad::is_reduced(results[[i]]$R)
+	ic <- all((((Dp[[i]] %% 2) %*% results[[i]]$V) %% 2) == (results[[i]]$R %% 2))
+	it <- Matrix::isTriangular(Matrix::Matrix(as.matrix(results[[i]]$V), sparse = TRUE))
+	# if (any(!c(ir,ic,it))){
+	# 	cat(sprintf("%d: reduced: %s, triangular: %s, correct: %s \n", 
+	# 							i, as.character(ir), as.character(it), as.character(ic)))
+	# 	browser()
+	# }
+	if (i == 11){
+		browser()
+	}
+	
+	i <<- i + 1L
+	# lows <- sapply(1:Rp$n_cols, function(i){ Rp$low_entry(i-1)})
+	# lows <- lows[lows >= 0]
+	# if (anyDuplicated(lows)){
+	# 	browser()
+	# }
+})
+
+
+
+for (i in seq(length(Dp))){
+	ir <- pbgrad::is_reduced(results[[i]]$R)
+	ic <- all((((Dp[[i]] %% 2) %*% results[[i]]$V) %% 2) == (results[[i]]$R %% 2))
+	it <- Matrix::isTriangular(Matrix::Matrix(as.matrix(results[[i]]$V), sparse = TRUE))
+	cat(sprintf("%d: reduced: %s, triangular: %s, correct: %s \n", 
+								i, as.character(ir), as.character(it), as.character(ic)))
+	
+}
+Low <- apply(RV$R, 2, phtools:::low_entry)-1L
+Low <- ifelse(Low == -1, NA, Low)
+# NA,NA,NA,NA,NA,NA,2,3,5,1,4,
+
+R <- results[[12]]$R
+V <- results[[12]]$V
+pos <- apply(R, 2, function(x) all(x == 0))
+Low <- apply(R, 2, phtools:::low_entry)-1L
+Low <- ifelse(Low == -1, NA, Low)
+RLow <- rep(NA, length(Low))
+RLow[na.omit(Low)] <- which(!is.na(Low))
+# NA,NA,NA,NA,NA,NA,2,3,5,1,4,
+
+R <- results[[2]]$R
+V <- results[[2]]$V
+Low <- apply(R, 2, phtools:::low_entry)-1L
+Low <- ifelse(Low == -1, NA, Low)
+# NA,NA,NA,NA,NA,NA,2,3,5,1,4,
+
+k <- which(Low == 2)
+l <- which(Low == 3)
+
+results[[1]]$R %*% Matrix::solve(results[[1]]$V)
+
+ii <- 12
+Rij <- Matrix::which(results[[ii]]$R != 0, arr.ind = TRUE)-1L
+Vij <- Matrix::which(results[[ii]]$V != 0, arr.ind = TRUE)-1L
+Rp <- phtools::psp_matrix(dim(results[[ii]]$R), i = Rij[,1], j = Rij[,2], x = rep(1, nrow(Rij)))
+Vp <- phtools::psp_matrix(dim(results[[ii]]$V), i = Vij[,1], j = Vij[,2], x = rep(1, nrow(Vij)))
+
+
+phtools:::transpose_schedule_R(Rp = Rp$as_XPtr(), Vp = Vp$as_XPtr(), S = schedule[13], 
+f = function(Rn, Vn, s){
+	# print(all(results[[ii+1]]$R == Rn))
+	print(s)
+})
+
+all(((D %% 2) %*% RV$V) %% 2 == RV$R %% 2)
+
+all(permute_move(RV$R %% 2, 1,2) == results[[1]]$R)
+
+
+
+
+Rij <- Matrix::which(RV$R != 0, arr.ind = TRUE)-1L
+Vij <- Matrix::which(RV$V != 0, arr.ind = TRUE)-1L
+Rp <- phtools::psp_matrix(dim(RV$R), i = Rij[,1], j = Rij[,2], x = rep(1, nrow(Rij)))
+Vp <- phtools::psp_matrix(dim(RV$V), i = Vij[,1], j = Vij[,2], x = rep(1, nrow(Vij)))
+
+phtools:::transpose_schedule_R(Rp = Rp$as_XPtr(), Vp = Vp$as_XPtr(), S = c(0), 
+f = function(Rn, Vn, s){
+	Rn <<- Rn
+	print(all(results[[1]]$R == Rn))
+	print(s)
+})
+
+
+m <- ((as.matrix(Dp[[10]]) %*% as.matrix(results[[10]]$V)) %% 2) - as.matrix(results[[10]]$R)
+which(m != 0, arr.ind = TRUE)
+
+
+## Testing random row/column swaps
+## + additions. Need to fix clean 
+M <- (Matrix::rsparsematrix(20,20,density = 0.35) %% 2) != 0
+Mij <- Matrix::which(M != 0, arr.ind = TRUE)-1L
+Mp <- phtools::psp_matrix(dim(M), i = Mij[,1], j = Mij[,2], x = rep(1, nrow(Mij)))
+tr <- sample(1:(ncol(M)-1), size = 100, replace = TRUE)
+for (op in tr){
+	Mp$swap_rows(op-1, op)
+	Mp$swap_cols(op-1, op)
+	M <- permute_move(M, op, op+1)
+	x <- sample(seq(ncol(M)), size = 2, replace = FALSE)
+	Mp$add_columns(x[1]-1, x[2]-1)
+	M[,x[1]] <- xor(M[,x[1]], M[,x[2]])
+	print(all(M == Mp$as.Matrix()))
+}
+# Mp$as.Matrix()
+all(apply(as.matrix(expand.grid(seq(20), seq(20)))-1L, 1, function(x){ Mp$at(x[1], x[2]) == M[x[1]+1, x[2]+1]}))
+```
+
+

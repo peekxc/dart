@@ -1,2 +1,3 @@
-# dart
-Tools for simulating dynamic persistence 
+## DART: Dynamic Reduction Toolkit
+
+< Under construction >

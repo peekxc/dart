@@ -1,0 +1,621 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+R <- Reduction$new()
+R$filtration <- filtration
+R$boundary_matrix(0)
+
+
+set.seed(1234)
+st <- pbgrad::r_geometric_complex(8, radius = 0.25, dim = 2)
+D <- pbgrad::boundary_matrix(st) %% 2
+RV <- pbgrad::reduce(D)
+R <- RV$R
+V <- RV$V
+
+## Check reduction is valid 
+pbgrad::is_reduced(R)
+Matrix::isTriangular(V, upper = TRUE)
+all((R %% 2) - ((D %*% V) %% 2) == 0)
+
+res1 <- move_right(R = R, V = V, i = 7, j = 10)
+
+# all(((permute_ij(D, i, j) %*% res1$V) %% 2) == res1$R)
+
+
+
+ij <- combn(st$n_simplices[2], 2) + sum(st$n_simplices[1])
+for (x in seq(ncol(ij))){
+	{ i <- ij[1,x]; j <- ij[2,x] }
+	res1 <- move_right(R = R, V = V, i = i, j = j)
+	decomposition_holds <- all(((permute_ij(D, i, j) %*% res1$V) %% 2) == res1$R)
+	R_reduced <- pbgrad::is_reduced(res1$R)
+	V_ut <- Matrix::isTriangular(res1$V, upper = TRUE)
+	print(sprintf("Checks (%d, %d): Decomposition holds = %s, R is reduced = %s, V is upper triangular = %s",
+								i, j, decomposition_holds, R_reduced, V_ut))
+}
+
+## Comprehensive
+# ij <- combn(st$n_simplices[2], 2) + sum(st$n_simplices[1])
+# for (x in seq(ncol(ij))){
+# 	{ i <- ij[1,x]; j <- ij[2,x] }
+# 	res1 <- move_right(R = R, V = V, i = i, j = j)
+# 	decomposition_holds <- all(((permute_ij(D, i, j) %*% res1$V) %% 2) == res1$R)
+# 	R_reduced <- pbgrad::is_reduced(res1$R)
+# 	V_ut <- Matrix::isTriangular(res1$V, upper = TRUE)
+# 	print(sprintf("Checks (%d, %d): Decomposition holds = %s, R is reduced = %s, V is upper triangular = %s",
+# 								i, j, decomposition_holds, R_reduced, V_ut))
+# }
+
+# ij <- combn(st$n_simplices[3], 2) + sum(st$n_simplices[1:2])
+# for (x in seq(ncol(ij))){
+# 	{ i <- ij[1,x]; j <- ij[2,x] }
+# 	res1 <- move_right(R = R, V = V, i = i, j = j)
+# 	decomposition_holds <- all(((permute_ij(D, i, j) %*% res1$V) %% 2) == res1$R)
+# 	R_reduced <- pbgrad::is_reduced(res1$R)
+# 	V_ut <- Matrix::isTriangular(res1$V, upper = TRUE)
+# 	print(sprintf("Checks (%d, %d): Decomposition holds = %s, R is reduced = %s, V is upper triangular = %s",
+# 								i, j, decomposition_holds, R_reduced, V_ut))
+# }
+```
+
+```{r}
+## Move left
+ij <- combn(st$n_simplices[2], 2) + sum(st$n_simplices[1])
+for (x in seq(ncol(ij))){
+	{ i <- ij[2,x]; j <- ij[1,x] }
+	res1 <- move_left(R = R, V = V, i = i, j = j)
+	decomposition_holds <- all(((permute_ij(D, i, j) %*% res1$V) %% 2) == res1$R)
+	R_reduced <- pbgrad::is_reduced(res1$R)
+	V_ut <- Matrix::isTriangular(res1$V, upper = TRUE)
+	print(sprintf("Checks (%d, %d): Decomposition holds = %s, R is reduced = %s, V is upper triangular = %s",
+								i, j, decomposition_holds, R_reduced, V_ut))
+}
+```
+
+```{r}
+# e_idx <- setdiff(seq(sum(st$n_simplices[1:2])), seq(st$n_simplices[1]))
+# V_local <- V[e_idx,e_idx]
+
+## double triangle
+st <- simplextree::simplex_tree(combn(3,2))
+
+D <- pbgrad::boundary_matrix(st)
+V <- pbgrad::reduce(D)$V %% 2
+R <- pbgrad::reduce(D)$R %% 2
+
+res1 <- move_left(R, V, i = 6, j = 4, state = c(TRUE, FALSE, FALSE, FALSE, FALSE))
+
+i <- 6
+j <- 4
+state <- rep(FALSE, 5L)
+for (k in seq(5)){
+	trues <- combn(5, k)
+	for (x in seq(ncol(trues))){
+		state <- rep(FALSE, 5L)
+		state[trues[,x]] <- TRUE
+		res1 <- move_left(R, V, i = i, j = j, state = state)
+		decomposition_holds <- all(((permute_move(D, i, j) %*% res1$V) %% 2) == res1$R)
+		R_reduced <- pbgrad::is_reduced(res1$R)
+		V_ut <- Matrix::isTriangular(res1$V, upper = TRUE)
+		print(sprintf("Checks (%d, %d): Decomposition holds = %s, R is reduced = %s, V is upper triangular = %s",
+										i, j, decomposition_holds, R_reduced, V_ut))
+		print(state)
+	}
+}
+
+decomposition_holds <- all(((permute_move(D, i, j) %*% res1$V) %% 2) == res1$R)
+R_reduced <- pbgrad::is_reduced(res1$R)
+V_ut <- Matrix::isTriangular(res1$V, upper = TRUE)
+print(sprintf("Checks (%d, %d): Decomposition holds = %s, R is reduced = %s, V is upper triangular = %s",
+								i, j, decomposition_holds, R_reduced, V_ut))
+
+# permute_left(R, i = 8, j = 5)
+I <- intersect(which(V[,8] != 0), seq(j, i-1))
+
+# J only needed if multiple columns of R_hat have same low index
+
+## i_d could be 5, 6, or 8 
+d_R <- R[,8]
+d_V <- V[,8]
+
+V[,i] <- (V[,I[1]] + V[,i]) %% 2
+V[,i] <- (V[,I[2]] + V[,i]) %% 2
+R[,i] <- (R[,I[1]] + R[,i]) %% 2
+R[,i] <- (R[,I[2]] + R[,i]) %% 2
+
+Dp <- permute_left(B, i = 8, j = 5)
+Vp <- permute_left(V, i = 8, j = 5)
+Rp <- permute_left(R, i = 8, j = 5)
+
+d_R <- permute_left(matrix(d_R), i = 8, j = 5)
+d_V <- permute_left(matrix(d_V), i = 8, j = 5)
+
+Rp[,8] <- d_R
+Vp[,8] <- d_V
+
+## (Dp %*% Vp) %% 2
+
+
+
+```
+
+```{r}
+st <- simplextree::simplex_tree()
+st %>% insert(matrix(c(1,2,1,3,1,4,1,5), nrow = 2, byrow = FALSE))
+D <- pbgrad::boundary_matrix(st)
+
+p <- c(rev(seq(5)), 6:9)
+P <- pbgrad::permutation_matrix(p)
+D <- (P %*% D %*% P) %% 2
+
+RV <- pbgrad::reduce(D)
+R <- RV$R
+V <- RV$V
+
+result <- move_right(R, V, i = 7, j = 9)
+Rp <- result$R[1:5,6:9]
+Vp <- result$V[6:9,6:9]
+
+V <- Vp
+R <- Rp
+
+(permute_move(D, i = 7, j = 9) %*% result$V) %% 2 - result$R
+
+## X 
+R <- RV$R[1:5,6:9]
+V <- RV$V[6:9,6:9]
+
+## moves simplex at position i to position j
+move_left <- function(R, V, i, j){
+	stopifnot(i > j, i <= ncol(R), j <= ncol(R))
+	low_entry <- function(x){ p <- which(x != 0); ifelse(length(p) == 0, 0, tail(p, 1L)) }
+	## If the column of V is already all zeros, just perform the move permutation
+	if (all(V[j:(i-1),i] == 0)){
+		R <- permute_left(R, i = i, j = j, dims = "cols")
+		V <- permute_left(V, i = i, j = j, dims = "both")
+		return(list(R=R,V=V))
+	}
+	
+	## Set the donor column 
+	dR <- R[,i,drop=FALSE]
+	dV <- V[,i,drop=FALSE]
+	
+	## Clear the ones in the jth column of V to make sure it stays upper-triangular
+	I <- seq(j, i-1L) ## absolute 
+	idx <- I[tail(which(V[I, i] != 0), 1L)]
+	indices <- c()
+	while(length(idx) != 0){
+		indices <- c(indices, idx)
+		R[,i] <- (R[,idx] + R[,i]) %% 2
+		V[,i] <- (V[,idx] + V[,i]) %% 2
+		idx <- I[tail(which(V[I, i] != 0), 1L)]
+	}
+	
+	## Perform the move permutation
+	V <- permute_move(V, i = i, j = j, dims = "both")
+	R <- permute_move(R, i = i, j = j, dims = "cols")
+	# dV <- matrix(permute_move(dV, i, j, dims = "rows"))
+	# dR <- matrix(permute_move(dR, i, j, dims = "rows"))
+	
+	## Collect indices of left=to-right column operations performed on V[,i]
+	J <- c(j, rev(indices + 1L))
+	
+	## Re-apply the reduction to J indices
+	# low_indices <- apply(R, 2, low_entry)
+	# for (ji in J){
+	# 	while(sum(low_indices[seq(ji)] == low_indices[ji]) > 1){
+	# 		ii <- head(which(low_indices[seq(ji)] == low_indices[ji]), 1L)
+	# 		R[,ji] <- (R[,ii] + R[,ji]) %% 2
+	# 		V[,ji] <- (V[,ii] + V[,ji]) %% 2
+	# 		low_indices[ji] <- low_entry(R[,ji])
+	# 	}
+	# }
+	
+	## Iterative switching reduction
+	if (length(J) > 1L){
+		low_J <- apply(R[,J], 2, low_entry)
+		pair <- sort(head(which(low_J == max(low_J)), 2L))
+		while(length(pair) == 2 && length(unique(low_J[pair])) == 1L){
+			si <- J[pair[1]]
+			ti <- J[pair[2]]
+			R[,ti] <- (R[,ti] + R[,si]) %% 2
+			V[,ti] <- (V[,ti] + V[,si]) %% 2
+			low_J[pair[2]] <- low_entry(R[,ti])
+			pair <- sort(head(which(low_J == low_J[ti]), 2L))
+		}
+	}
+	
+	
+	## Deterministic reduction
+	# if (length(J) > 1){
+	# 	low_J <- apply(R[,J], 2, low_entry)
+	# 	J <- J[order(low_J, decreasing = TRUE)]
+	# 	low_J <- low_J[order(low_J, decreasing = TRUE)]
+	# 	j_idx <- J[]
+	# 	for (jj in seq(length(j_idx) - 1)){
+	# 		st_idx <- range(c(j_idx[jj], j_idx[jj+1])) ## minmax 
+	# 		R[,st_idx[2]] <- (R[,st_idx[1]] + R[,st_idx[2]]) %% 2
+	# 		V[,st_idx[2]] <- (V[,st_idx[1]] + V[,st_idx[2]]) %% 2
+	# 	}
+	# }
+	
+	## the lwest ones - 1give the pairing directly 
+	
+	## Perform the column donation
+	donor_idx <- tail(J, 1L)
+	V[,donor_idx] <- matrix(permute_move(dV, i, j, dims = "rows"))
+	R[,donor_idx] <- dR
+	return(list(R=R,V=V))
+}
+
+```
+
+
+```{r}
+
+
+## move left with 2/simplices 
+# st <- simplextree::simplex_tree(t(cbind(1, 2:8, c(3:7, 1:2))))
+set.seed(1234)
+st <- pbgrad::r_geometric_complex(n = 6, radius = 0.80, dim = 2)
+D <- pbgrad::boundary_matrix(st)
+v_idx <- seq(st$n_simplices[1])
+e_idx <- setdiff(seq(sum(st$n_simplices[1:2])), seq(st$n_simplices[1]))
+t_idx <- setdiff(seq(sum(st$n_simplices[1:3])), seq(sum(st$n_simplices[1:2])))
+
+# all_p <- combinat::permn(st$n_simplices[2])
+all_p <- permutations::rperm(n = 100, r = st$n_simplices[2])
+all_p <- matrix(sapply(all_p, as.vector), nrow = st$n_simplices[2], byrow = TRUE)
+for (k in seq(ncol(all_p))){
+	p <- all_p[,k]
+	Pr <- pbgrad::permutation_matrix(c(v_idx, e_idx[p], t_idx))
+	Pc <- pbgrad::permutation_matrix(Matrix::invPerm(c(v_idx, e_idx[p], t_idx)))
+	D <- Pr %*% D %*% Pc
+	RV <- pbgrad::reduce(D %% 2)
+	
+	## Get the local (R,V,D) matrices
+	R1 <- RV$R[v_idx, e_idx, drop=FALSE]; R2 <- RV$R[e_idx, t_idx, drop=FALSE]
+	V1 <- RV$V[e_idx, e_idx, drop=FALSE]; V2 <- RV$V[t_idx, t_idx, drop=FALSE]
+	D1 <- D[v_idx, e_idx, drop=FALSE]; D2 <- D[e_idx, t_idx, drop=FALSE]
+	
+	## Try permuting rows, see which are non-reduced
+	ml_idx <- combn(nrow(R2), 2)[c(2,1),]
+	rp <- apply(ml_idx, 2, function(x){ pbgrad::is_reduced(permute_move(R2, i = x[1], j = x[2], dims = "rows")) })
+	move_idx <- ml_idx[,which(!rp)]
+	
+	## Simulate all possible moves that could make R2 non-reduced
+	if (ncol(move_idx) > 0){
+		for (l in seq(ncol(move_idx))){
+			si <- move_idx[1,l]
+			ti <- move_idx[2,l]
+			RV_res <- move_left(R = list(R1,R2), V = list(V1,V2), i = si, j = ti)
+			status <- check_RV(R = RV_res$R[[1]], V = RV_res$V[[1]], D = permute_move(D1, i = si, j = ti, dims = "cols"))
+			if (any(!status)){ 
+				print(paste0("Failed 1: ", l))
+				stop("") 
+			}
+			status <- check_RV(R = RV_res$R[[2]], V = RV_res$V[[2]], D = permute_move(D2, i = si, j = ti, dims = "rows"))
+			if (any(!status)){ 
+				print(paste0("Failed 2: ", l)) 
+				stop("") 
+			}
+		}
+	}
+}
+
+
+check_RV <- function(R,V,D){
+	c1 <- pbgrad::is_reduced(R)
+	c2 <- as.logical(Matrix::isTriangular(V, upper = TRUE))
+	c3 <- all(((D %*% V) %% 2) - (R %% 2) == 0)
+	return(c(c1,c2,c3))
+}
+
+## TODO: Make work with the full boundary matrix
+# st <- simplex_tree(1:5)
+# D <- pbgrad::boundary_matrix(st) %% 2
+# RV <- pbgrad::reduce(D)
+# R <- RV$R
+# V <- RV$V
+# 
+# moves <- combn(sum(st$n_simplices), 2)[2:1,]
+# for (l in seq(ncol(moves))){
+# 	new_RV <- move_left(R = R, V = V, i = moves[1,l], j = moves[2,l])
+# 	status <- check_RV(R = new_RV$R, V = new_RV$V, D = permute_move(D, i = moves[1,l], j = moves[2,l]))
+# 	if (any(!status)){
+# 		stop("")
+# 	}
+# }
+
+
+```
+
+
+Test cases 
+```{r}
+## Test cases 4 point bar - lex order 
+# st <- simplextree::simplex_tree(combn(4,2)[,c(1,4,6)])
+# D <- pbgrad::boundary_matrix(st)
+# v_idx <- seq(st$n_simplices[1])
+# e_idx <- setdiff(seq(sum(st$n_simplices[1:2])), seq(st$n_simplices[1]))
+# R <- pbgrad::reduce(D)$R[v_idx,e_idx] %% 2
+# V <- pbgrad::reduce(D)$V[e_idx,e_idx] %% 2
+
+## 5 vertex single component (no holes)
+st <- simplextree::simplex_tree(combn(5,2)[,1:4])
+D <- pbgrad::boundary_matrix(st)
+v_idx <- seq(st$n_simplices[1])
+e_idx <- setdiff(seq(sum(st$n_simplices[1:2])), seq(st$n_simplices[1]))
+
+p <- c(5:1, 6:9)
+D <- (pbgrad::permutation_matrix(p) %*% D %*% pbgrad::permutation_matrix(Matrix::invPerm(p))) %% 2
+R <- pbgrad::reduce(D)$R[v_idx,e_idx] %% 2
+V <- pbgrad::reduce(D)$V[e_idx,e_idx] %% 2
+
+result <- move_left(R, V, i = 4, j = 3)
+pbgrad::is_reduced(result$R)
+as.logical(Matrix::isTriangular(result$V, upper = TRUE))
+(permute_left(D[v_idx,e_idx], i = 4, j = 3, dims = "cols") %*% result$V) %% 2 - result$R
+
+
+## 1-skeleton code
+set.seed(1234)
+st <- pbgrad::r_geometric_complex(5, radius = 0.30, dim = 1)
+D <- pbgrad::boundary_matrix(st)
+v_idx <- seq(st$n_simplices[1])
+e_idx <- setdiff(seq(sum(st$n_simplices[1:2])), seq(st$n_simplices[1]))
+RV <- pbgrad::reduce(D)
+R <- RV$R[v_idx,e_idx] %% 2
+V <- RV$V[e_idx,e_idx] %% 2
+
+move_idx <- combn(ncol(R), 2)[2:1,]
+for (ii in seq(ncol(move_idx))){
+	x <- move_idx[,ii]
+	result <- move_left(R, V, i = x[1], j = x[2])
+	c1 <- pbgrad::is_reduced(result$R)
+	c2 <- as.logical(Matrix::isTriangular(result$V, upper = TRUE))
+	c3 <- all(((permute_left(D[v_idx,e_idx], i = x[1], j = x[2], dims = "cols") %*% result$V) %% 2 - result$R) == 0)
+	print(c(c1,c2,c3))	
+	if (any(!c(c1,c2,c3))){
+		break
+	}
+}
+
+
+st <- simplex_tree(combn(5,2)[,c(1,2,3,4,10)])
+D <- pbgrad::boundary_matrix(st)
+v_idx <- seq(st$n_simplices[1])
+e_idx <- setdiff(seq(sum(st$n_simplices[1:2])), seq(st$n_simplices[1]))
+RV <- pbgrad::reduce(D)
+R <- RV$R[v_idx,e_idx] %% 2
+V <- RV$V[e_idx,e_idx] %% 2
+# result <- move_left(R, V, i = 5, j = 1)
+
+
+## Permutations of two connected 2-simplices
+st <- simplex_tree(combn(4,3)[,1:2])
+D <- pbgrad::boundary_matrix(st) %% 2
+reverse_p <- unlist(sapply(seq(st$dimension + 1), function(i){
+	ii <- c(0, cumsum(st$n_simplices))[c(i, i+1)]
+	rev(seq(ii[1]+1, ii[2]))
+}))
+reverse_p[7:8] <- reverse_p[8:7]
+D <- pbgrad::permutation_matrix(reverse_p) %*% D %*% pbgrad::permutation_matrix(Matrix::invPerm(reverse_p))
+RV <- pbgrad::reduce(D)
+v_idx <- seq(st$n_simplices[1])
+e_idx <- setdiff(seq(sum(st$n_simplices[1:2])), seq(st$n_simplices[1]))
+t_idx <- setdiff(seq(sum(st$n_simplices[1:3])), seq(sum(st$n_simplices[1:2])))
+
+D1 <- D[v_idx, e_idx]
+R1 <- RV$R[v_idx, e_idx]
+V1 <- RV$V[e_idx, e_idx]
+D2 <- D[e_idx, t_idx]
+R2 <- RV$R[e_idx, t_idx]
+V2 <- RV$V[t_idx, t_idx]
+
+# move_left(R1, V1, i = 4, j = 1)
+{ i <- 4; j <- 1 }
+V1[,i] <- (V1[,i] + V1[,3]) %% 2
+V1[,i] <- (V1[,i] + V1[,2]) %% 2
+R1[,i] <- (R1[,i] + R1[,3]) %% 2
+R1[,i] <- (R1[,i] + R1[,2]) %% 2
+V1p <- permute_move(V1, i = 4, j = 1, dims = "both")
+R1p <- permute_move(R1, i = 4, j = 1, dims = "cols")
+R2p <- permute_move(R2, i = 4, j = 1, dims = "rows")
+
+
+## move left with 2/simplices 
+st <- simplextree::simplex_tree(t(cbind(1, 2:8, c(3:7, 1:2))))
+D <- pbgrad::boundary_matrix(st)
+v_idx <- seq(st$n_simplices[1])
+e_idx <- setdiff(seq(sum(st$n_simplices[1:2])), seq(st$n_simplices[1]))
+t_idx <- setdiff(seq(sum(st$n_simplices[1:3])), seq(sum(st$n_simplices[1:2])))
+Pr <- pbgrad::permutation_matrix(c(v_idx, rev(e_idx), t_idx))
+Pc <- pbgrad::permutation_matrix(Matrix::invPerm(c(v_idx, rev(e_idx), t_idx)))
+D <- Pr %*% D %*% Pc
+
+RV <- pbgrad::reduce(D %% 2)
+
+R1 <- RV$R[v_idx, e_idx]
+V1 <- RV$V[e_idx, e_idx]
+R2 <- RV$R[e_idx, t_idx]
+V2 <- RV$V[t_idx, t_idx]
+
+R <- list(R1, R2)
+V <- list(V1, V2)
+
+## Try permuting rows, see which are non-reduced
+ml_idx <- combn(nrow(R2), 2)[c(2,1),]
+rp <- apply(ml_idx, 2, function(x){
+	pbgrad::is_reduced(permute_move(R2, i = x[1], j = x[2], dims = "rows"))
+})
+ml_idx[,which(!rp)]
+x <- c(13,1)
+
+x <- c(4, 2)
+result <- move_left(R2, V2, i = 4, j = 2)
+
+c1 <- pbgrad::is_reduced(result$R)
+c2 <- as.logical(Matrix::isTriangular(result$V, upper = TRUE))
+c3 <- all(((permute_move(D[e_idx,t_idx], i = x[1], j = x[2], dims = "cols") %*% result$V) %% 2 - (result$R %% 2) == 0))
+print(c(c1,c2,c3))
+
+permute_move(R2)
+
+
+V[,4] <- (V[,3] + V[,4]) %% 2
+R[,4] <- (R[,3] + R[,4]) %% 2
+
+V[,4] <- (V[,2] + V[,4]) %% 2
+R[,4] <- (R[,2] + R[,4]) %% 2
+
+V[,4] <- (V[,1] + V[,4]) %% 2
+R[,4] <- (R[,1] + R[,4]) %% 2
+
+V <- permute_move(V, i = 4, j = 1, dims = "both")
+R <- permute_move(R, i = 4, j = 1, dims = "cols")
+
+R[,2] <- (R[,1] + R[,2]) %% 2
+V[,2] <- (V[,1] + V[,2]) %% 2
+
+R[,3] <- (R[,2] + R[,3]) %% 2
+V[,3] <- (V[,2] + V[,3]) %% 2
+
+R[,4] <- (R[,3] + R[,4]) %% 2
+V[,4] <- (V[,3] + V[,4]) %% 2
+
+
+D <- permute_left(D[v_idx, e_idx], i = 4, j = 1, dims = "cols")
+
+V[,4] <- (V[,3] + V[,4]) %% 2
+R[,4] <- (R[,3] + R[,4]) %% 2
+V[,4] <- (V[,2] + V[,4]) %% 2
+R[,4] <- (R[,2] + R[,4]) %% 2
+
+V <- permute_move(V, i = 4, j = 2, dims = "both")
+R <- permute_move(R, i = 4, j = 2, dims = "cols")
+
+dV <- V[,3]
+dR <- R[,3]
+V[,3] <- (V[,2] + V[,3]) %% 2
+R[,3] <- (R[,2] + R[,3]) %% 2
+# dV <- V[,4]
+# dR <- R[,4]
+V[,4] <- (V[,3] + V[,4]) %% 2
+R[,4] <- (R[,3] + R[,4]) %% 2
+
+Dr <- permute_move(D[v_idx, e_idx], i = 4, j = 2, dims = "cols") 
+
+
+
+st <- simplex_tree(combn(5,2)[,c(1,5,8,10)])
+D <- pbgrad::boundary_matrix(st) %% 2
+p <- 
+	
+# move_left(R,V, i = 3, j = 2)
+```
+
+
+
+
+```{r}
+st <- simplextree::simplex_tree(combn(3,2))
+D <- pbgrad::boundary_matrix(st) %% 2
+labels <- c(simplex_to_str(matrix(rev(st$vertices), nrow = 1)), simplex_to_str(t(st$edges)[,c(2,1,3)]))
+p <- match(labels, colnames(D))
+D <- pbgrad::permutation_matrix(p) %*% D %*% pbgrad::permutation_matrix(Matrix::invPerm(p))
+RV <- pbgrad::reduce(D)
+new_RV <- move_right(R = RV$R, V = RV$V, i = 4, j = 6)
+
+pbgrad::is_reduced(new_RV$R)
+Matrix::isTriangular(new_RV$V, upper = TRUE)
+((new_RV$R %*% Matrix::solve(new_RV$V)) %% 2) - permute_move(D, 4, 6)
+
+```
+
+```{r}
+st <- simplextree::simplex_tree(combn(3,2))
+D_lex <- pbgrad::boundary_matrix(st) %% 2
+labels <- c(simplex_to_str(matrix(rev(st$vertices), nrow = 1)), simplex_to_str(t(st$edges)[,c(2,3,1)]))
+p <- match(labels, colnames(D_lex))
+D <- pbgrad::permutation_matrix(p) %*% D_lex %*% pbgrad::permutation_matrix(Matrix::invPerm(p))
+RV <- pbgrad::reduce(D)
+
+## Check matches moving right (231 -> 312)
+new_RV <- move_right(R = RV$R, V = RV$V, i = 4, j = 6)
+pbgrad::is_reduced(new_RV$R)
+as.logical(Matrix::isTriangular(new_RV$V, upper = TRUE))
+all((((new_RV$R %*% Matrix::solve(new_RV$V)) %% 2) - permute_move(D, 4, 6)) == 0)
+
+## Check matches moving left (231 -> 123)
+new_RV <- move_left(R = RV$R, V = RV$V, i = 6, j = 4)
+pbgrad::is_reduced(new_RV$R)
+as.logical(Matrix::isTriangular(new_RV$V, upper = TRUE))
+all((((new_RV$R %*% Matrix::solve(new_RV$V)) %% 2) - permute_move(D, 6, 4)) == 0)
+
+
+## 312 -> 231
+st <- simplextree::simplex_tree(combn(3,2))
+D <- pbgrad::boundary_matrix(st) %% 2
+labels <- c(simplex_to_str(matrix(rev(st$vertices), nrow = 1)), simplex_to_str(t(st$edges)[,c(3,1,2)]))
+p <- match(labels, colnames(D))
+D <- pbgrad::permutation_matrix(p) %*% D %*% pbgrad::permutation_matrix(Matrix::invPerm(p))
+RV <- pbgrad::reduce(D)
+new_RV <- move_right(R = RV$R, V = RV$V, i = 3, j = 6)
+pbgrad::is_reduced(new_RV$R)
+as.logical(Matrix::isTriangular(new_RV$V, upper = TRUE))
+all((((new_RV$R %*% Matrix::solve(new_RV$V)) %% 2) - permute_move(D, 3, 6)) == 0)
+
+## 231 -> 123
+st <- simplextree::simplex_tree(combn(3,2))
+D <- pbgrad::boundary_matrix(st) %% 2
+labels <- c(simplex_to_str(matrix(rev(st$vertices), nrow = 1)), simplex_to_str(t(st$edges)[,c(2,3,1)]))
+p <- match(labels, colnames(D))
+D <- pbgrad::permutation_matrix(p) %*% D %*% pbgrad::permutation_matrix(Matrix::invPerm(p))
+RV <- pbgrad::reduce(D)
+new_RV <- move_right(R = RV$R, V = RV$V, i = 3, j = 6)
+pbgrad::is_reduced(new_RV$R)
+Matrix::isTriangular(new_RV$V, upper = TRUE)
+all((((new_RV$R %*% Matrix::solve(new_RV$V)) %% 2) - permute_move(D, 3, 6)) == 0)
+
+```
+
+
+
+
+```{r}
+## Local move right
+del1 <- pbgrad::boundary_matrix(st, dim = 1)
+del2 <- pbgrad::boundary_matrix(st, dim = 2)
+
+
+# res2 <- restore_left(R = R2, V = V2, J = sort(J)[j_order])
+		#J <- c(j, rev(indices + 1L))
+		#J <- J[order(apply(R[,J], 2, low_entry), decreasing = TRUE)]
+		#RV_res <- restore_left(R, V, J)
+		# J <- which(low_J == i)
+		# idx <- J[1]
+		# while(TRUE){
+		# 	next_low <- tail(which(R2[seq(1,low_J[idx]-1L), idx] != 0),1L)
+		# 	idx <- which(low_J == next_low)
+		# 	if (length(idx) == 0 || !(next_low %in% seq(j,i))){ break }
+		# 	J <- c(J, idx)
+		# }
+		
+		#J <- which(R2[i-1,] != 0)
+		# low_J <- apply(R2, 2, low_entry)
+		# next_low <- low_entry(R2[seq(1,i-1), which(low_J == i)])
+		# J <- which(low_J == i | (R2[next_low,] != 0) & low_J <= next_low & low_J != 0 & low_J %in% seq(j,i))
+		# J <- which(low_J %in% seq(j,i))
+		
+		# J <- J[R2[next_low,J] != 0]
+		# J <- J[R2[i-1,J] != 0]
+```
+
+
+

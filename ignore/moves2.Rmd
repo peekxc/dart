@@ -1,0 +1,448 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(simplextree)
+library(phtools)
+st <- simplextree::simplex_tree(combn(4,2)[,1:4])
+D <- pbgrad::boundary_matrix(st)
+RV <- pbgrad::reduce(D)
+
+lis <- phtools:::longest_subseq(c(2,4,1,3))
+
+P <- matrix(sapply(permutations::allperms(4), as.vector), nrow = 4, byrow = TRUE)
+
+A <- apply(P, 2, function(p){
+	D2 <- D[c(p,6,8,5,7), c(p,6,8,5,7)]
+	RV2 <- pbgrad::reduce(D2)
+	
+	RVa <- move_right(RV2$R, RV2$V, i = 6, j = 8)
+	RVb <- move_right(RVa$R, RVa$V, i = 5, j = 6)
+	d1 <- RVa$m + RVb$m
+	RVa <- move_right(RV2$R, RV2$V, i = 5, j = 7)
+	RVb <- move_right(RVa$R, RVa$V, i = 5, j = 8)
+	d2 <- RVa$m + RVb$m
+	RVa <- move_left(RV2$R, RV2$V, i = 7, j = 5)
+	RVb <- move_left(RVa$R, RVa$V, i = 8, j = 7)
+	d3 <- RVa$m + RVb$m
+	RVa <- move_left(RV2$R, RV2$V, i = 8, j = 6)
+	RVb <- move_left(RVa$R, RVa$V, i = 8, j = 5)
+	d4 <- RVa$m + RVb$m
+	return(c(d1,d2,d3,d4))
+})
+
+# MoveRight first solution is always better
+# MoveLeft first solution is better 
+# Reduction to interval scheduling? 
+
+D2 <- D[c(P[,3],6,8,5,7), c(P[,3],6,8,5,7)]
+RV2 <- pbgrad::reduce(D2)
+
+## 2 + 1 additions
+RVa <- move_right(RV2$R, RV2$V, i = 6, j = 8)
+RVb <- move_right(RVa$R, RVa$V, i = 5, j = 6)
+sprintf("%d + %d", RVa$m, RVb$m)
+
+## 3 + 2 additions
+RVa <- move_right(RV2$R, RV2$V, i = 5, j = 7)
+RVb <- move_right(RVa$R, RVa$V, i = 5, j = 8)
+sprintf("%d + %d", RVa$m, RVb$m)
+
+## 2 + 0 additions
+RVa <- move_left(RV2$R, RV2$V, i = 7, j = 5)
+RVb <- move_left(RVa$R, RVa$V, i = 8, j = 7)
+sprintf("%d + %d", RVa$m, RVb$m)
+
+## 1 + 2 additions
+RVa <- move_left(RV2$R, RV2$V, i = 8, j = 6)
+RVb <- move_left(RVa$R, RVa$V, i = 8, j = 5)
+sprintf("%d + %d", RVa$m, RVb$m)
+```
+
+
+```{r}
+## Interval scheduling Idea 
+st <- simplextree::simplex_tree(cbind(rbind(1,2:5), rbind(2:5, c(3:5, 2))))
+# st <- pbgrad::r_geometric_complex(20, radius = 0.20)
+ds <- straverse(level_order(st), length)
+si_lex <- straverse(level_order(st), simplex_to_str)
+D <- pbgrad::boundary_matrix(st)
+
+## Choose a random permutation
+set.seed(1234)
+P <- permutations::rperm(n = 1, r = st$n_simplices[2], moved = NA)
+# P <- matrix(sapply(P, as.vector), nrow = st$n_simplices[2], byrow = TRUE)
+# P_lis <- apply(P, 2, phtools:::longest_subseq)
+
+## Fix the source and target filtration orders 
+f1 <- si_lex[ds==2]
+f2 <- f1[as.vector(P)]
+p_lis <- f2[phtools:::longest_subseq(match(f2, f1))]
+edit_distance <- length(f1) - length(p_lis)
+
+## Generate the set of all possible move sequences
+symbols_to_move <- setdiff(f2, p_lis)
+source_pos <- match(symbols_to_move, f1)
+target_pos <- match(symbols_to_move, f2)
+ move_sequences <- matrix(sapply(permutations::allperms(edit_distance), as.vector), 
+ 												 nrow = length(symbols_to_move), byrow = TRUE)
+#move_sequences <- matrix(as.vector(permutations::rperm(n = 150, r = edit_distance, moved = NA)), 
+#			 nrow = edit_distance, byrow = TRUE)
+RV <- pbgrad::reduce(D)
+
+## Execute each move sequence
+C <- vector(mode = "integer", length = ncol(move_sequences))
+for (pi in seq(ncol(move_sequences))){
+	p <- move_sequences[,pi]
+	moves <- move_sequence(symbols_to_move[p], s = f1, t = f2, lis = p_lis)
+	
+	## Reset the matrices
+	D1 <- D[ds == 1, ds == 2]
+	R1 <- RV$R[ds==1, ds==2]
+	R2 <- RV$R[ds==2, ds==3]
+	V1 <- RV$V[ds==2, ds==2]
+	V2 <- RV$V[ds==3, ds==3]
+	
+	## Apply the moves
+	current <- f1
+	ca <- 0L
+	for (i in seq(1, ncol(moves))){
+		si <- moves[1,i]
+		ti <- moves[2,i]
+		if (si == ti){ next }
+		else if (si < ti){ result <- move_right(R = list(R1, R2),V = list(V1, V2), i = si, j = ti) }
+		else { result <- move_left(R = list(R1, R2),V = list(V1, V2), i = si, j = ti) } 
+		if (length(result$m) == 0 ||
+				any(!check_RV(R = result$R[[1]], V = result$V[[1]], 
+											D = permute_move(D1, i = si, j = ti, dims = "cols")))){
+				print("Invalid decomposition")
+				break
+		}
+		{ R1 <- result$R[[1]]; R2 <- result$R[[2]] }
+		{ V1 <- result$V[[1]]; V2 <- result$V[[2]] }
+		D1 <- permute_move(D1, i = si, j = ti, dims = "cols")
+		current <- permute_move(current, i = si, j = ti)
+		ca <- ca + result$m
+	}
+	C[pi] <- ca
+}
+
+## Recursive rule for moving 'symbol' from 'source' to 'target', given 'lis'. 
+## returns a pair (i,j) where i := position of 'symbol' in 'source' and 
+## j := position where to move 'symbol' to respect the lis ordering in 'target'
+move_pair <- function(symbol, source, target, lis, 
+											rule = c("earliest", "latest", "closest", "furthest", "all")){
+	stopifnot(!(symbol %in% lis))
+	if (missing(rule) || !(rule %in% c("earliest", "latest", "closest", "furthest", "all"))){
+		rule <- "earliest"
+	}
+	n <- length(source)
+	
+	lcs <- c(0, lis, n+1)
+	target_aug <- c(0, target, n+1)
+	t_lcs_idx <- match(lcs, target_aug)
+	l1 <- target_aug[tail(t_lcs_idx[t_lcs_idx < match(symbol, target_aug)], 1L)]
+	l2 <- target_aug[head(t_lcs_idx[t_lcs_idx > match(symbol, target_aug)], 1L)]
+	source_aug <- c(0, source, n + 1)
+	s_rng <- sort(match(c(l1, l2), source_aug))-1L
+	
+	## Mark inclusive/exclusive
+	si <- match(symbol, source)
+	ti <- match(symbol, target)
+	if (length(s_rng) != 2 || length(si) != 1 || length(ti) != 1){ browser() }
+	if (si < s_rng[1]){           ## moving right
+		s_rng[2] <- s_rng[2] - 1L
+	} else if (si > s_rng[2]){    ## moving left
+		s_rng[1] <- s_rng[1] + 1L
+	}
+	if (s_rng[1] <= 0){ s_rng[1] <- 1 }
+	if (s_rng[2] > n){ s_rng[2] <- n }
+	possible_idx <- seq(s_rng[1], s_rng[2])
+
+	# s_lis_idx <- match(lis, source)
+	# t_lis_idx <- match(lis, target)
+	# si <- match(symbol, source)
+	# ti <- match(symbol, target)
+	# 
+	# ## Get partition numbers
+	# sp <- findInterval(si, vec = c(0, s_lis_idx, n + 1), rightmost.closed = FALSE, left.open = FALSE)
+	# tp <- findInterval(ti, vec = c(0, t_lis_idx, n + 1), rightmost.closed = FALSE, left.open = FALSE)
+	# 
+	# source_parts <-  cut(c(0, source, n+1), breaks = unique(c(0, lis, n+1)), 
+	# 										 ordered_result = TRUE, include.lowest = FALSE, right = FALSE)
+	# target_parts <- cut(target, breaks = unique(c(0, lis, n+1)), 
+	# 										 ordered_result = TRUE, include.lowest = FALSE, right = FALSE)
+	# 
+	# 
+	# possible_idx <- which(target_parts == source_parts[si])
+	
+	## Get strict upper and lower bounds
+	# lb_t <- t_lis_idx[tail(which(t_lis_idx < ti), 1L)]
+	# lb_s <- ifelse(length(lb_t) == 0, 1L, match(target[lb_t], source))
+	# 
+	# ub_t <- t_lis_idx[head(which(t_lis_idx > ti), 1L)]
+	# ub_s <- ifelse(length(ub_t) == 0, n, match(target[ub_t], source))
+	
+	# lb_t <- max(c(1, t_lis_idx[tail(which(t_lis_idx < ti), 1L)])) ## lower bound in the target 
+	# ub_t <- min(c(t_lis_idx[head(which(t_lis_idx > ti), 1L)], n)) ## upper bound in the target
+	
+	# s_lis_idx <- match(lis, source)
+	# lb_s <- max(c(1, s_lis_idx[tail(which(s_lis_idx <= si), 1L)]))
+	# ub_s 
+	# lb_s <- min(c(lb_t, match(target[lb_t], source)))
+	# ub_s <- max(c(ub_t, match(target[ub_t], source)))
+	# 
+	# lb_t <- ifelse(lb_t == 1L, 1L, lb_t-1L)
+	# ub_t <- ifelse(ub_t == n, n, ub_t+1L)
+	# possible_idx <- seq(lb+1, ub-1)
+	
+	## ( lower bound == upper bound ) and move left 
+	# if (lb_s == ub_s){
+	# 	possible_idx <- lb_s
+	# } else {
+	# 	possible_idx <- seq(lb_s, ub_s) ## inclusive on both ends
+	# }
+	# else if (si > lb_s){
+	# 	possible_idx <- seq(lb_s + 1L, ub_s)
+	# } else if (si < lb_s){
+	# 	possible_idx <- seq(lb_s, ub_s - 1L)
+	# } else {
+	# 	stop("something went wrong")
+	# }
+	stopifnot(length(possible_idx) >= 1)
+	if (rule == "all"){ return(unname(cbind(si, possible_idx))) }
+	index <- switch (rule,
+    "earliest" = min(possible_idx),
+    "latest" = tail(possible_idx, 1L), #max(possible_idx), 
+    "closest" = possible_idx[which.min(abs(possible_idx - si))],
+    "furthest" = possible_idx[which.max(abs(possible_idx - si))], 
+	)
+	return(cbind(si, index))
+}
+
+## Given an ordered set of symbols in s and a given LIS between 's' and 't', returns a 
+## set of relative (i,j) indices yieldings the sequence move operations needed to transform
+## 's' into 't' while respecting LIS
+move_sequence <- function(symbols, s, t, lis, f = NULL, ...){
+	stopifnot(length(intersect(symbols, lis)) == 0)
+	stopifnot(length(s) == length(t))
+	stopifnot(missing(f) || is.null(f) || is.function(f))
+	current <- s 
+	moves <- matrix(integer(0L), nrow = 2L)
+	for (cs in symbols){
+		mi <- move_pair(cs, source = current, target = t, lis = lis, ...)
+		moves <- cbind(moves, mi)
+		current <- permute_move(current, i = mi[1], j = mi[2])
+		lis <- c(cs, lis)[order(match(c(cs, lis), current))]
+		if (!missing(f) && !is.null(f)){
+			f(current, lis)
+		} 
+	}
+	stopifnot(all(current == t))
+	moves <- unname(moves)
+	row.names(moves) <- c("i", "j")
+	return(moves)
+}
+
+## Given a (2 x m) matrix of source/target move indices 'M', a reduced matrix 'R1' and its
+## corresponding matrix 'V1', this function executes the set of moves given in 'M', calling 
+## 'f' with the result of each move
+execute_moves <- function(M, R1, V1, R2 = NULL, V2 = NULL, f = NULL, D1 = NULL){
+	stopifnot(nrow(M) == 2)
+	both_dims <- TRUE
+	if (missing(R2) || is.null(R2)){
+		R2 <- Matrix::Matrix(numeric(0L), nrow = ncol(R1), ncol = 0, sparse = TRUE)
+		V2 <- Matrix::Matrix(numeric(0L), nrow = 0, ncol = 0, sparse = TRUE)
+		both_dims <- FALSE
+	}
+	for (i in seq(1, ncol(M))){
+		si <- M[1,i]
+		ti <- M[2,i]
+		if (si == ti){ next }
+		else if (si < ti){ result <- move_right(R = list(R1, R2),V = list(V1, V2), i = si, j = ti) }
+		else { result <- move_left(R = list(R1, R2),V = list(V1, V2), i = si, j = ti) } 
+		
+		## If D1 supplied, permute and check the decomposition
+		if (!is.null(D1) && !missing(D1)){
+			D_check <- permute_move(D1, i = si, j = ti, dims = "cols")
+			is_invalid <- any(!check_RV(R = result$R[[1]], V = result$V[[1]],	D = D_check))
+			if (is_invalid){
+				print("Invalid decomposition")
+				break
+			}
+			D1 <- permute_move(D1, i = si, j = ti, dims = "cols")
+		}
+		{ R1 <- result$R[[1]]; R2 <- result$R[[2]] }
+		{ V1 <- result$V[[1]]; V2 <- result$V[[2]] }
+		if (both_dims){
+			f(R1, R2, V1, V2)
+		} else { f(R1, V1) 	}
+	}
+}
+
+
+# s <- letters[1:6]
+# t <- sample(s)
+# lis <- t[phtools:::longest_subseq(match(t, s))]
+# symbols <- s[!(s %in% lis)]
+# move_sequence(symbols, s, t, lis)
+
+# ## Worst case behavior 
+# worst_idx <- head(which(C == max(C)), 1L)
+# p <- move_sequences[,worst_idx]
+# src_p <- f1 
+# tar_p <- f2
+# for (s in symbols_to_move[p]){
+# 	si <- match(s, src_p)
+# 	ti <- match(s, tar_p)
+# 	src_p <- permute_move(src_p, i = si, j = ti)
+# }
+# all(src_p == f2)
+
+## Plot filtration
+G <- igraph::graph_from_edgelist(st$edges, directed = FALSE)
+v_xy <- igraph::layout.auto(G)
+
+col1 <- c(rep("black", st$n_simplices[1]), viridis::inferno(st$n_simplices[2]))
+col2 <- c(rep("black", st$n_simplices[1]), viridis::inferno(st$n_simplices[2])[match(f2, f1)])
+
+e_lwd <- seq(1, 5, length.out = st$n_simplices[2]) 
+
+layout(matrix(c(1,2), nrow = 1))
+plot(st, coords = v_xy, color_pal = col1, edge_opt = list(lwd = e_lwd))
+plot(st, coords = v_xy, color_pal = col2, edge_opt = list(lwd = e_lwd[match(f2, f1)]))
+
+## Execute move sequence
+f_lis <- f2[phtools:::longest_subseq(match(f2, f1))]
+to_move <- setdiff(f1, f_lis)
+
+## Best sequence 
+best_sequence <- to_move[move_sequences[,which.min(C)]]
+M <- move_sequence(symbols = best_sequence, s = f1, t = f2, lis = f_lis)
+
+## Worst case
+# worst_sequence <- to_move[move_sequences[,which.max(C)]]
+# M <- move_sequence(symbols = worst_sequence, s = f1, t = f2, lis = f_lis)
+
+## Reset the matrices
+D1 <- D[ds==1, ds==2]
+R1 <- RV$R[ds==1, ds==2]
+V1 <- RV$V[ds==2, ds==2]
+
+## Get the move permutations
+S <- colnames(R1)
+s_orders <- vector(mode = "list", length = ncol(M)+1)
+s_orders[[1]] <- S
+for (i in seq(ncol(M))){
+	s_orders[[i+1]] <- permute_move(s_orders[[i]], i = M[1,i], j = M[2,i])
+}
+
+animation::saveGIF({
+	plot_segments(R1, V1, target = f2)
+	rect(xleft = 0, ybottom = ncol(R1)-(M[1,1]-0.5)+1, ytop = ncol(R1)-(M[1,1]+0.5)+1,
+			 xright = length(f1)+1, col = "blue", 
+			 lwd = 2, density = 0)
+	
+	i <- 2L
+	execute_moves(M, R1 = R1, V1 = V1, f = function(R1, V1){
+		plot_segments(R1, V1, target = f2)
+		if (i <= ncol(M)){
+			yb <- ncol(R1)-(M[1,i-1]-0.5)+1
+			yt <- ncol(R1)-(M[1,i-1]+0.5)+1
+			rect(xleft = 0, ybottom = yb, xright = length(f1)+1, ytop = yt, 
+					 col = "orange", lwd = 2, density = 0)
+		}
+		if (i <= ncol(M)){
+			yb <- ncol(R1)-(M[1,i]-0.5)+1
+			yt <- ncol(R1)-(M[1,i]+0.5)+1
+			rect(xleft = 0, ybottom = yb, xright = length(f1)+1, ytop = yt, 
+					 col = "blue",  lwd = 2, density = 0)
+		}
+		i <<- i + 1L
+	})
+}, movie.name = "best_case_2.gif")
+
+
+get_column_I <- function(R, V, i, j){
+	stopifnot(i > j)
+	I <- seq(j, i-1L) ## absolute 
+	idx <- I[tail(which(V[I, i] != 0), 1L)]
+	indices <- c(i)
+	while(length(idx) != 0){
+		indices <- c(indices, idx)
+		R[,i] <- (R[,idx] + R[,i]) %% 2
+		V[,i] <- (V[,idx] + V[,i]) %% 2
+		idx <- I[tail(which(V[I, i] != 0), 1L)]
+	}
+	return(indices)
+}
+
+## Given a pair (R, V) and a target which is a permutation of the column names of R, 
+## plots the segments needed to move R into place 
+plot_segments <- function(R, V, target){
+	stopifnot(all(is.character(colnames(R))))
+	stopifnot(length(target) == ncol(R))
+
+	{ f1 <- colnames(R); f2 <- target } 
+	ns <- ncol(R)
+	intervals <- rbind(1:length(f1), match(f1, f2))
+	move_indices <- apply(intervals, 2, function(int){
+		{ si <- int[1]; ti <- int[2] }
+		if (si == ti){ return(si) }
+		if (si < ti){
+			I <- (si:ti)[which(V[si,si:ti] != 0)]
+			return(sort(unique(c(I, ti))))
+		} else {
+			return(sort(unique(c(ti, get_column_I(R, V, i = si, j = ti))), decreasing = TRUE))
+		}
+	})
+
+	## Plot the outline + axes
+	plot.default(NULL, NULL, xlim = c(0, length(f2)+1), ylim = c(0, length(f2)+1), 
+						 ylab = "Simplex", xlab = "Move indices", axes = FALSE)
+	box()
+	axis(side = 1L, at = seq(ns), labels = as.character(seq(ns)))
+	axis(side = 2L, at = seq(ns), labels = rev(f1), cex.axis = 0.6)
+	
+	## Plot the move operations
+	is_increasing <- function(x){ all(x == sort(x))}
+	for (i in seq(length(move_indices))){
+		y <- ns-i+1
+		xy <- cbind(move_indices[[i]], y)
+		mi <- move_indices[[i]]
+		
+		if (length(mi) > 1){
+			mi_diff <- abs(diff(mi))
+			for (si in seq(length(mi) - 1L)){
+				if (mi_diff[si] == 1){
+					segments(x0 = mi[si], y0 = y, x1 = mi[si+1L], y1 = y, lwd = 2)
+				}
+			}
+		}
+		
+		## Plot the source/target + points
+		if (is_increasing(mi)){
+			points(xy[c(-1, -nrow(xy)),,drop=FALSE], col = "green", pch = 20)
+			points(xy[1,,drop=FALSE], col = "green", pch = 22, cex = 1.5)
+			points(xy[nrow(xy),,drop=FALSE], col = "green", pch = 4, cex = 1.5)
+		} else if (length(mi) != 1){
+			points(xy[c(-1, -nrow(xy)),,drop=FALSE], col = "red", pch = 20)
+			points(xy[1,,drop=FALSE], col = "red", pch = 22, cex = 1.5)
+			points(xy[nrow(xy),,drop=FALSE], col = "red", pch = 4, cex = 1.5)
+		} else {
+			points(xy, col = "blue", pch = 20)
+		}
+		
+	}
+}
+
+
+
+# sf::st_sfc(list(s1,s2,s3))
+
+
+
+```
+

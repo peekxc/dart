@@ -1,0 +1,24 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+rips <- pbgrad::r_geometric_complex(6, radius = 0.35)
+D <- pbgrad::boundary_matrix(rips)
+RV <- pbgrad::reduce(D)
+
+idx <- setdiff(which(RV$V[,14] != 0), 14)
+
+matrix(rowSums(RV$R %% 2) %% 2, ncol = 1) == (RV$V[,14] %% 2)
+
+# bundary of RV$R[,14] == rowSums(D[,idx]%%2) %% 2
+```
+
+
+```{r}
+## Wheel example
+
+
+```

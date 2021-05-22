@@ -1,0 +1,541 @@
+---
+title: "The RIVET algorithm"
+output: html_notebook
+---
+
+```{r input}
+set.seed(123)
+circle <- tdaunif::sample_circle(50, sd = 0.025)
+circle_kde <- ks::kde(circle, xmin = rep(-1.50, 2), xmax = rep(1.50, 2))
+
+## Sample outside the dense areas
+# noise <- cbind(runif(20, -1.5, 1.5), runif(20, -1.5, 1.5))
+# prob_complement <- 1.0 - as.vector(circle_kde$estimate)
+# noise <- sample(x = length(circle_kde$estimate), size = 20, replace = FALSE, prob = prob_complement)
+# idx <- arrayInd(noise, .dim = dim(circle_kde$estimate))
+# noise <- cbind(circle_kde$eval.points[[1]][idx[,1]], circle_kde$eval.points[[2]][idx[,2]])
+
+prob_complement <- circle_kde$estimate
+threshold <- quantile(circle_kde$estimate, 0.50)
+high_density <- prob_complement > threshold
+prob_complement[high_density] <- 0.0
+prob_complement[!high_density] <- 1.0
+noise <- sample(x = length(circle_kde$estimate), size = 25, replace = FALSE, prob = prob_complement)
+idx <- arrayInd(noise, .dim = dim(circle_kde$estimate))
+noise <- cbind(circle_kde$eval.points[[1]][idx[,1]], circle_kde$eval.points[[2]][idx[,2]])
+
+## Form full data set 
+x <- rbind(circle, noise)
+
+## What the density contours looks like
+x_kde <- ks::kde(x, xmin = rep(-1.50, 2), xmax = rep(1.50, 2))
+plot(x_kde, display = "filled.contour2", cont = seq(1,100, by = 10), 
+		 xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+points(circle)
+points(noise, pch = 20, cex =0.80)
+
+# x_kde_noise <- x_kde
+# x_kde_noise$estimate <- max(circle_kde$estimate) - circle_kde$estimate
+# plot(x_kde_noise, display = "filled.contour2", cont = seq(1,100, by = 10), 
+# 		 xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5))
+# points(noise, col = "green", cex = 0.75, pch = 20)
+
+```
+
+```{r rivet_console}
+R <- simplextree::rips(dist(x), dim = 2, eps = 1.1, filtered = TRUE)
+dist_f <- R$weights
+dens_v <- predict(x_kde, x = x)
+dens_f <- sapply(R$simplices, function(x){ max(dens_v[x]) })
+f_simp <- unlist(simplex_to_str(R$simplices))
+
+# Returns the bigraded betti numbers of a rips filteration on point cloud x equipped with function 'f'
+bigraded_betti <- function(x, f, H=1L, xbin=10L, ybin=10L, max_dist=NULL, rivet_path="~/rivet",
+													 save.path=NULL, xreverse=FALSE, yreverse=FALSE){
+	stopifnot(is.numeric(f), is.matrix(x))
+	rivet_input <- list()
+	rivet_input <- append(rivet_input, "--datatype points_fn")
+	rivet_input <- append(rivet_input, paste0(as.character(f), collapse = ","))
+	pts <- apply(x, 1, function(x) paste0(as.character(x), collapse = ","))
+	rivet_input <- append(rivet_input, pts)
+	if (!missing(save.path) && is.character(save.path)){
+		rivet_input_fn <- file.path(save.path)
+	} else {
+		rivet_input_fn <- file.path(tempfile())
+		on.exit(unlink(rivet_input_fn), add = TRUE)
+	}
+	writeLines(unlist(rivet_input), con = rivet_input_fn)
+	
+	rivet_opts <- sprintf("-H %d --xbins %d --ybins %d", H, xbin, ybin)
+	if (!missing(max_dist) && is.numeric(max_dist)){
+		rivet_opts <- paste(rivet_opts, sprintf("--maxdist %g", max_dist))
+	}
+	if (xreverse){ rivet_opts <- paste(rivet_opts, "--xreverse") }
+	if (yreverse){ rivet_opts <- paste(rivet_opts, "--yreverse") }
+	rivet_opts <- paste(rivet_opts, "--betti")
+	rivet_dir <- normalizePath(rivet_path)
+	rivet_output_fn <- file.path(tempfile())
+	on.exit(unlink(rivet_output_fn), add = TRUE)
+	# if (file.exists(rivet_output_fn)){ file.remove(rivet_output_fn)	}
+	rivet_cmd <- paste(file.path(rivet_dir, "rivet_console"), rivet_input_fn, rivet_opts, ">", rivet_output_fn)
+	message(rivet_cmd)
+	rivet_out <- system(rivet_cmd)
+
+	if (rivet_out == 0){
+		out <- read_betti(rivet_output_fn)
+		return(out)
+	} else {
+		stop("RIVET failed to execute properly. Check inputs.")
+	}
+}
+```
+
+
+```{r Parsing rivet output}
+# Reads in the Betti number file produced by RIVET 
+# x := file location 
+# value := whether to return grades associated with the betti number of the original (raw) indices 
+# return 1) (0,1,2) Bigraded Betti numbers, the non-zero Hilbert (dimension) function values,
+# and the grading for the module
+read_betti <- function(x, value=TRUE){
+	
+	## Read the filename
+	rivet_out <- readLines(x)
+	
+	## Get x-grades 
+	xb <- which(rivet_out == "x-grades")+1L
+	xe <- which(rivet_out == "y-grades")-1L
+	xc <- Filter(function(x) nchar(x) != 0, rivet_out[xb:xe])
+	xc <- unname(sapply(xc, function(num) eval(parse(text=num))))
+	
+	## Get y-grades 
+	yb <- which(rivet_out == "y-grades")+1L
+	ye <- which(rivet_out == "Dimensions > 0:")-1L
+	yc <- Filter(function(x) nchar(x) != 0, rivet_out[yb:ye])
+	yc <- unname(sapply(yc, function(num) eval(parse(text=num))))
+	
+	## Get Hilbert function values
+	hb <- which(rivet_out == "Dimensions > 0:")+1L
+	he <- which(rivet_out == "Betti numbers:")-1L
+	hc <- Filter(function(x) nchar(x) > 0, rivet_out[hb:he])
+	hx <- strsplit(gsub(pattern = "\\((\\d+), (\\d+), (\\d+)\\)", replacement = "\\1 \\2 \\3 ", x = hc), " ")
+	hc <- do.call(rbind, lapply(hx, as.numeric))
+	hc <- cbind(xc[hc[,1]+1L], yc[hc[,2]+1L], hc[,3])
+	colnames(hc) <- c("x", "y", "dim")
+	
+	## Get non-zero Betti-0 numbers
+	b0b <- which(rivet_out == "xi_0:")+1L
+	b0e <- which(rivet_out == "xi_1:")-1L
+	if (b0b != b0e){
+		betti0_index <- t(str_to_simplex(rivet_out[b0b:b0e]))
+		betti0_value <- cbind(x=xc[betti0_index[,1]+1], y=yc[betti0_index[,2]+1], value=betti0_index[,3])
+	} else {
+		betti0_index <- NULL
+		betti0_value <- NULL
+	}
+	
+	
+	## Get non-zero Betti-1 numbers
+	b1b <- which(rivet_out == "xi_1:")+1L
+	b1e <- which(rivet_out == "xi_2:")-1L
+	if (b1b != b1e){
+		betti1_index <- t(str_to_simplex(rivet_out[b1b:b1e]))
+		betti1_value <- cbind(x=xc[betti1_index[,1]+1], y=yc[betti1_index[,2]+1], value=betti1_index[,3])
+	} else {
+		betti1_index <- NULL
+		betti1_value <- NULL
+	}
+	
+	## Get non-zero Betti-2 numbers
+	b2b <- which(rivet_out == "xi_2:")+1L
+	if (is.numeric(b2b) && b2b != (length(rivet_out)+1L)){
+		betti2_index <- t(str_to_simplex(rivet_out[b2b:length(rivet_out)]))
+		betti2_value <- cbind(x=xc[betti2_index[,1]+1], y=yc[betti2_index[,2]+1], value=betti2_index[,3])
+	} else {
+		betti2_index <- NULL
+		betti2_value <- NULL
+	}
+	
+	out <- list(hf=hc, x_grades=xc, y_grades=yc)
+	if (value){
+		out <- modifyList(out, list(betti0=betti0_value, betti1=betti1_value, betti2=betti2_value))
+	} else {
+		out <- modifyList(out, list(betti0=betti0_index, betti1=betti1_index, betti2=betti2_index))
+	}
+	return(out)
+}
+
+
+# Plot Hilbert function
+# pt_col <- rgb(0,0,0,hc[,3]/max(hc[,3]))
+# plot(hc[,1:2], col = pt_col, pch = 20)
+# 
+# ## Each row of hc indicates the south-west corner of the grid cell to highlight
+# plot(expand.grid(xc, yc), pch = 20, col = adjustcolor("black", alpha.f = 0.10))
+# alpha.hf <- seq(0.10, 0.50, length.out = diff(range(hc[,3]))+1)
+# u_hf <- sort(unique(hc[,3]))
+# for (i in seq(nrow(hc))){
+# 	x_idx <- match(hc[i,1], xc)
+# 	y_idx <- match(hc[i,2], yc)
+# 	box_col  <- adjustcolor("black", alpha.f = alpha.hf[match(hc[i,3], u_hf)])
+# 	rect(xleft = xc[x_idx], xright = xc[x_idx+1], ybottom = yc[y_idx], ytop = yc[y_idx+1], col = box_col, 
+# 			 lwd = 0)
+# }
+```
+
+Create anchor points 
+```{r anchor}
+# S <- unique(rbind(betti0_value[,1:2], betti1_value[,1:2]))
+anchors <- function(S){
+	I <- combn(nrow(S), 2)
+	A <- lapply(1:ncol(I), function(i){
+		x <- I[,i]
+		pt1 <- S[x[1],] 
+    pt2 <- S[x[2],] 
+    if (all(pt1 < pt2)){ return(NULL) }
+    else if (any(pt1 < pt2) || (pt1[1] == pt2[1] || pt1[2] == pt2[2])){
+    	return(apply(S[x,], 2, max))
+    }
+    return(NULL)
+	})
+	A <- unique(do.call(rbind, A))
+	return(A)
+}
+
+
+## Plot S, A, and P and the Betti-0 and Betti-1 
+# P <- unique(rbind(S, anchors))
+# points(betti1_value[,1:2], col = "red")
+# points(betti0_value[,1:2], col = "green")
+# points(S, col = "purple", pch = 20)
+# points(anchors, col = adjustcolor("blue", alpha.f = 0.40), pch = 21, cex = 2.0)
+# points(P, col = "orange", pch = 0, cex = 2.05)
+
+## Least upper bound of a (2 x m) matrix 
+# LUB <- function(x){ apply(x, 1, max) }
+# LUB(matrix(c(3,5,7,4), nrow = 2)) == (7,5)
+```
+
+Given a point, convert it to a line, and then obtain the corresponding filtration 
+```{r push_L}
+## projects a series of points in 'x' onto a line given by y = mx + b
+proj_L <- function(x, m, b){
+	projection <- apply(x, 1, function(pt){
+		if (pt[2] == m*pt[1] + b){ return(pt) }
+		is_above <- pt[1]*m + b < pt[2]
+		ifelse(rep(is_above, 2), c((pt[2]-b)/m, pt[2]), c(pt[1], m*pt[1]+b))
+	})
+	return(t(projection))
+}
+```
+
+
+```{r arrangement}
+
+## polygonizes a line arrangement, returning the 2-cells 
+## L := (n x 2) matrix of lines y = ax + b
+polygonize_la <- function(L, xlim=c(0,1), ylim=c(0,1)){
+	# X <- apply(L, 1, function(ab){ (ylim[2]-ab[2])/ab[1] })
+	# Y <- apply(L, 1, function(ab){ ab[1]*xlim[2] + ab[2] })
+	# XY1 <- cbind(X, ylim[2])
+	# XY2 <- cbind(xlim[2], Y)
+	# XY3 <- cbind(-L[,2]/L[,1], ylim[1])
+	# XY4 <- cbind(xlim[1], L[,2])
+	# 
+	# ## Collect valid points in the box
+	# m <- nrow(L)
+	# t <- sapply(seq(m), function(i){ (xlim[1] <= XY1[i,1] & XY1[i,1] <= xlim[2]) })
+	# r <- sapply(seq(m), function(i){ (ylim[1] <= XY2[i,2] & XY2[i,2] <= ylim[2]) })
+	# b <- sapply(seq(m), function(i){ (xlim[1] <= XY3[i,1] & XY3[i,1] <= xlim[2]) })
+	# l <- sapply(seq(m), function(i){ (ylim[1] <= XY4[i,2] & XY4[i,2] <= ylim[2]) })
+	# 
+	# pc <- list(XY1, XY2, XY3, XY4)
+	# sides <- list(t,r,b,l)
+	# 
+	# valid_idx <- combn(4,2)
+	# valid_lines <- do.call(rbind, lapply(1:ncol(valid_idx), function(i){
+	# 	x <- valid_idx[,i]
+	# 	valid <- sides[[x[1]]] & sides[[x[2]]] 
+	#   cbind(pc[[x[1]]][valid,], pc[[x[2]]][valid,])
+	# }))
+	# edges <- lapply(seq(nrow(valid_lines)), function(i){ 
+	# 	sf::st_linestring(rbind(valid_lines[i,1:2], valid_lines[i,3:4])) 
+	# })
+
+	## Get segments intersecting given lines with boxed region
+	internal_segments <- lapply(1:nrow(L), function(i){
+    el <- L[i,]
+    int_pts <- matrix(c(xlim[1], el[2], xlim[2], xlim[2]*el[1] + el[2]), nrow = 2, byrow = TRUE)
+    sf::st_linestring(int_pts)
+	})
+	
+	## Make constrained box
+	inner <- list(
+		sf::st_linestring(matrix(c(xlim[1], xlim[2], ylim[2], ylim[2]), ncol = 2)), 
+		sf::st_linestring(matrix(c(xlim[2], xlim[2], ylim[2], ylim[1]), ncol = 2)),
+		sf::st_linestring(matrix(c(xlim[2], xlim[1], ylim[1], ylim[1]), ncol = 2)),
+		sf::st_linestring(matrix(c(xlim[1], xlim[1], ylim[1], ylim[2]), ncol = 2))
+	)
+	
+	## Form all the cells fo the line arrangement
+	arrangement <- sf::st_multilinestring(c(inner, internal_segments))
+	arrangement <- sf::st_union(arrangement, by_feature = TRUE)
+	polys <- sf::st_polygonize(arrangement)
+	return(polys)
+}
+
+## Form the dual graph
+dual_graph <- function(arrangement){
+	stopifnot("GEOMETRYCOLLECTION" %in% class(arrangement))
+	stopifnot(all(sapply(arrangement, function(x) "POLYGON" %in% class(x))))
+	
+	## Get polygon boundary intersections
+	poly_intersects <- combn(length(arrangement), 2, function(x){ 
+		length(sf::st_intersects(arrangement[[x[1]]], arrangement[[x[2]]])[[1]]) > 0 
+	})
+	## Determine if intersections are point-wise or along an edge
+	intersect_at_end <- apply(combn(length(arrangement), 2)[,poly_intersects], 2, function(x){
+		int_type <- class(sf::st_intersection(arrangement[[x[1]]], arrangement[[x[2]]]))
+		return("LINESTRING" %in% int_type)
+	})
+	## The edges of the dual graph are the pairs of faces that share an edge 
+	edges <- combn(length(arrangement), 2)[,which(poly_intersects)[intersect_at_end]]
+	return(edges)
+}
+
+## The vertices of the dual graph
+# centroids <- t(sapply(polys, sf::st_centroid))
+ 
+# for (i in seq(ncol(edges))){
+# 	c1 <- centroids[edges[1,i],]
+# 	c2 <- centroids[edges[2,i],]
+# 	segments(c1[1],c1[2],c2[1],c2[2], col = "orange")
+# }
+# 
+# points(t(sapply(polys, sf::st_centroid)), col = "red")
+```
+
+```{r plot.hilbert}
+plot.hilbert <- function(x, betti=c(0,1,2), show_grid=TRUE, ...){
+	# Plot Hilbert function
+	pt_col <- rgb(0,0,0,x$hf[,3]/max(x$hf[,3]))
+	if ("new" %in% names(list(...)) && list(...)[["new"]]){
+		points(x$hf[,1:2], col = adjustcolor("white", alpha.f = 0), ...)
+	} else {
+		plot(x$hf[,1:2], col = adjustcolor("white", alpha.f = 0), ...)
+	}
+
+	## Each row of hc indicates the south-west corner of the grid cell to highlight
+	if (show_grid){
+		points(expand.grid(x$x_grades, x$y_grades), pch = 20, col = adjustcolor("black", alpha.f = 0.10))
+	}
+	alpha.hf <- seq(0.10, 0.50, length.out = diff(range(x$hf[,3]))+1)
+	u_hf <- sort(unique(x$hf[,3]))
+	for (i in seq(nrow(x$hf))){
+		x_idx <- match(x$hf[i,1], x$x_grades)
+		y_idx <- match(x$hf[i,2], x$y_grades)
+		box_col  <- adjustcolor("black", alpha.f = alpha.hf[match(x$hf[i,3], u_hf)])
+		rect(xleft = x$x_grades[x_idx], xright = x$x_grades[x_idx+1], 
+				 ybottom = x$y_grades[y_idx], ytop = x$y_grades[y_idx+1], col = box_col, 
+				 lwd = 0)
+	}
+	if (is.logical(betti)){
+		if (as.logical(betti)){
+			points(x$betti0[,1:2], col = adjustcolor("green", alpha.f = 0.75), pch = 20)
+			points(x$betti1[,1:2], col = adjustcolor("red", alpha.f = 0.75), pch = 20)
+			points(x$betti2[,1:2], col = adjustcolor("yellow", alpha.f = 0.75), pch = 20)
+		}
+	} else {
+		if (0 %in% betti){ points(x$betti0[,1:2], col = adjustcolor("green", alpha.f = 0.75), pch = 20) }
+		if (1 %in% betti){ points(x$betti1[,1:2], col = adjustcolor("red", alpha.f = 0.75), pch = 20) }
+		if (2 %in% betti){ points(x$betti2[,1:2], col = adjustcolor("yellow", alpha.f = 0.75), pch = 20) }
+	}
+}
+```
+
+Putting it all together
+```{r all}
+ro <- bigraded_betti(x, f = dens_v, H = 1L, xbin = 10, ybin = 10, xreverse = TRUE, max_dist = 1.1, 
+										 rivet_path = "~/rivet", save.path = "pc_f.txt")
+S <- rbind(ro$betti0[,1:2], ro$betti1[,1:2])
+A <- anchors(S)
+if (any(A[,1] < 0)){ A[,1] <- -A[,1] }
+
+xstep <- min(diff(ro$x_grades))
+ystep <- min(diff(ro$y_grades))
+plot(NULL, xlim = range(ro$x_grades)+c(-1,1)*xstep, ylim = range(ro$y_grades)+c(-1,1)*xstep,
+		 xlab = "Density", ylab = "Distance")
+abline(v = 0, col = "gray", lty = 2)
+abline(h = 0, col = "gray", lty = 2)
+abline(v=ro$x_grades, lty = 6, col = "gray")
+abline(h=ro$y_grades, lty = 6, col = "gray")
+plot_hilbert(ro, new = TRUE, show_grid = FALSE, cex = 2.0)
+
+# TODO: figure our trimming
+# apply(S, 2, max)
+
+## Use anchors to get lines making line arrangement. 
+## Determine bounds of arrangement using intersections
+L <- cbind(m=A[,1], b= - A[,2])
+I <- combn(nrow(L),2)
+L_pts <- do.call(rbind, apply(I, 2, function(ii){
+    i <- ii[1]; j <- ii[2]
+    a <- L[i,1]; b <- L[i,2]
+    c <- L[j,1]; d <- L[j,2]
+    xc <- (b-d)/(c-a)
+    if (xc > 0){ return(c(xc, a*xc + b)) }
+    return(NULL)
+}))
+L_pts <- L_pts[!(abs(L_pts[,1]) == Inf | abs(L_pts[,2]) == Inf),,drop=FALSE]
+# L_pts <- L_pts[L_pts[,2] > 0]
+
+LA <- polygonize_la(L, xlim = c(0, max(L_pts[,1])), ylim = c(min(c(-A[,2], A[,2])), max(L_pts[,2])))
+centroids <- t(sapply(LA, sf::st_centroid))
+points(centroids, col = "orange", pch = 20, cex = 0.50)
+
+## Form path through via TSP 
+tsp_path <- TSP::solve_TSP(TSP::TSP(dist(centroids)))
+
+## Alternative path via dual graph
+D <- matrix(max(dist(centroids))*100, nrow(centroids), nrow(centroids))
+dg <- dual_graph(LA)
+dual_edges <- t(dg)
+D[dual_edges[,1:2]] <- as.matrix(dist(centroids))[dual_edges]
+D[dual_edges[,2:1]] <- as.matrix(dist(centroids))[dual_edges]
+mst <- dbscan:::prims(as.dist(D), nrow(centroids))
+
+# diag(D) <- 0
+# tsp_path <- solve_TSP(TSP::TSP(as.dist(D)))
+
+plot(LA, col = adjustcolor("lightgrey", alpha.f = 0.50), asp = 7.5, lwd = 0.25)
+
+## Plot dual graph 
+for (j in seq(ncol(dg))){
+	i <- dg[,j]
+	segments(x0 = centroids[i[1],1], x1 = centroids[i[2], 1],
+					 y0 = centroids[i[1  ],2], y1 = centroids[i[2], 2],
+					 # col = rainbow(ncol(dg))[j], lwd = 1.2)
+					 col = "blue", lwd = 1.1, lty = 2)
+}
+
+## Plot path in dual graph 
+G <- igraph::graph_from_edgelist(mst[,1:2])
+dg_path <- igraph::dfs(G, 1)$order
+points(centroids[dg_path,], col = rainbow(length(dg_path)), pch = 20)
+
+
+## Plot TSP approximation 
+for (i in seq(length(tsp_path)-1L)){
+	segments(
+		x0 = centroids[tsp_path[i],1], y0 = centroids[tsp_path[i],2],
+		x1 = centroids[tsp_path[i+1],1], y1 = centroids[tsp_path[i+1],2],
+		col = rainbow(length(tsp_path)-1L)[i]
+	)
+}
+
+## Plot MST approximation 
+# for (i in seq(nrow(mst))){
+# 	segments(x0 = centroids[mst[i,1],1], x1 = centroids[mst[i,2],1], 
+# 					 y0 = centroids[mst[i,1],2], y1 = centroids[mst[i,2],2], 
+# 					 col = rainbow(nrow(mst))[i])
+# }
+
+
+axis(1)
+axis(2)
+abline(h = 0, col = "lightgrey", lty = 2)
+points(centroids, col = "orange", pch = 20, cex = 0.5)
+
+## Choose a path
+# arrangement_path <- as.vector(tsp_path)
+arrangement_path <- as.vector(dg_path)
+
+## For each vertex in the dual graph, use point-line duality to get filtration 
+fibers <- cbind(m=centroids[,1], b=-centroids[,2]) ## use duality here
+minimal_bigrades <- structure(cbind(dens_f, dist_f), dimnames = list(f_simp, NULL))
+fiber_path <- lapply(as.vector(arrangement_path), function(fi){
+	fiber <- fibers[fi,]
+	proj_pts <- proj_L(minimal_bigrades, m = fiber[1], b = fiber[2])
+	dist_to_src <- as.vector(proxy::dist(matrix(c(0, fiber[2]), ncol = 2), y = proj_pts))
+	rownames(minimal_bigrades[order(dist_to_src),])
+})
+saveRDS(fiber_path, file = "fiber_path.rds")
+
+
+# xstep <- min(diff(ro$x_grades))
+# ystep <- min(diff(ro$y_grades))
+# plot(NULL, xlim = range(ro$x_grades)+c(-1,1)*xstep, ylim = range(ro$y_grades)+c(-1,1)*xstep,
+# 		 xlab = "Density", ylab = "Distance")
+# abline(v = 0, col = "gray", lty = 2)
+# abline(h = 0, col = "gray", lty = 2)
+# abline(v=ro$x_grades, lty = 6, col = "gray")
+# abline(h=ro$y_grades, lty = 6, col = "gray")
+# plot.hilbert(ro, new = TRUE, show_grid = FALSE, cex = 2.0)
+
+## Show the fibers
+rng_x <- range(minimal_bigrades[,1])
+rng_y <- range(minimal_bigrades[,2])
+extra <- c(diff(rng_x), diff(rng_y))*0.15
+plot.default(NULL, xlim = rng_x+c(-1,1)*extra[1], ylim = rng_y+c(-1,1)*extra[2], 
+						 xlab = "density", ylab = "distance")
+points(minimal_bigrades, pch = 20, cex = 0.75, col = adjustcolor("black", alpha.f = 0.30))
+for (cell_index in as.vector(arrangement_path)){
+	fiber <- fibers[cell_index,]
+	abline(a = fiber[2], b = fiber[1], col = rainbow(length(arrangement_path))[cell_index])
+}
+
+
+## TODO: what is a trimmed implicit FI rep? 
+# box_S <- apply(S, 2, max)
+
+# tiff("test.tiff", units="in", width=15, height=15, res=800)
+# plot(L_pts, col = "red", cex = 1.0)
+# # x_range <- c(0, max(-L[,2]/L[,1]))
+# # y_range <- c(-1,1)*max(abs(L[,2]))
+# # plot.default(NULL, xlim = x_range, ylim = y_range)
+# apply(L, 1, function(el){
+# 	abline(a = el[2], b = el[1], lwd = 0.35, col = adjustcolor("black", alpha.f = 0.20))
+# })
+# dev.off()
+# 
+# x_range <- c(0, max(-L[,2]/L[,1]))
+# y_range <- c(-1,1)*max(abs(L[,2]))
+# plot.default(NULL, xlim = x_range, ylim = y_range)
+# apply(L, 1, function(el){ abline(a = el[2], b = el[1]) })
+# abline(v = 0, lwd = 2, col = "gray", lty = 2)
+# 
+# plot.hilbert(ro, show_grid = FALSE, ylim = c(0, 2.0), xlim = c(0, 0.45))
+```
+
+
+
+
+```{r}
+x_min <- 0
+x_max <- 1.0
+L <- apply(b1_norm, 1, function(cd){ function(x){ x*cd[1]-cd[2] } })
+ls <- lapply(L, function(el){ c(el(x_min), el(x_max)) })
+L <- lapply(ls, function(el) sf::st_linestring(cbind(c(x_min,x_max), el)))
+ML <- sf::st_multilinestring(L)
+plot(ML, xlim = c(0, x_max))
+abline(v = 0, col = "red", lty = 2)
+abline(h = 0, col = "gray", lty = 4)
+sf::st_polygonize(ML)
+
+
+l1 <- sf::st_linestring(matrix(c(-2, 2, 0, 0), ncol = 2))
+l2 <- sf::st_linestring(matrix(c(0, 1, 2, -1), ncol = 2))
+l3 <- sf::st_linestring(matrix(c(-1, 0, -1, 2), ncol = 2))
+plot(sf::st_line_merge(c(l1, l2, l3)))
+plot(sf::st_polygonize(sf::st_line_merge(c(l1,l2,l3))))
+
+```
+
+
+
+```{r}
+
+```
+
+
+

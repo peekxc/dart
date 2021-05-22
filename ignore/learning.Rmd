@@ -1,0 +1,1303 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+st <- simplextree::simplex_tree(combn(4, 3))
+
+D <- pbgrad::boundary_matrix(st) %% 2
+RV <- pbgrad::reduce(D, output = "RV")
+
+R <- RV$R
+V <- RV$V
+dimnames(V) <- dimnames(R)
+
+
+rowSums(D[,which(V[,10] != 0)]) %% 2
+
+
+
+S <- cbind(rbind(1, seq(2, 6), seq(3, 7)), c(1,2,7))
+st <- simplextree::simplex_tree(S)
+plot(st, coords = igraph::layout.auto(igraph::graph_from_edgelist(st$edges)))
+
+D <- pbgrad::boundary_matrix(st) %% 2
+RV <- pbgrad::reduce(D)
+ds <- straverse(level_order(st), length)
+
+R1 <- RV$R[ds == 1L, ds == 2L]
+V1 <- RV$V[ds == 2L, ds == 2L]
+R2 <- RV$R[ds == 2L, ds == 3L][,0L]
+V2 <- RV$V[ds == 3L, ds == 3L][0L,0L]
+
+phtools::move_right(list(R1, R2), list(V1, V2), 10, 12)
+
+f1 <- colnames(R1)
+f2 <- sample(f1)
+f_lis <- f2[phtools:::longest_subseq(match(f2, f1))]
+to_move <- setdiff(f1, f_lis)
+
+possible_moves <- lapply(to_move, function(sym){ move_pair(sym, f1, f2, f_lis, "all")})
+
+move_costs <- lapply(possible_moves, function(pm){ 
+  if (pm[1] < pm[2]){ phtools::move_right(list(R1, R2), list(V1, V2), i = pm[1], j = pm[2])$m } 
+  else { phtools::move_left(list(R1, R2), list(V1, V2), i = pm[1], j = pm[2])$m }
+})
+
+## Recursive function to compute all possible move combinations
+results <- list()
+
+move_sequence_recursive <- function(symbols, source, target, lis, vn, moves = matrix(0L, nrow = 2, ncol = 0), ordered=FALSE, rule = "all"){
+	if (all(source == target)){ 
+		ms <- list(final=source, moves=moves)
+		assign(x = vn, value = append(.GlobalEnv[[vn]], list(ms)), envir = .GlobalEnv)
+	} else {
+		if (any(symbols %in% lis)){ browser() }
+		if (!ordered){
+			for (cs in symbols){
+				mi <- move_pair(cs, source = source, target = target, lis = lis, rule = rule)
+				if (any(source[mi[,1]] %in% lis)){ browser() }
+				for (ii in seq(nrow(mi))){
+					new_moves <- cbind(moves, mi[ii,])
+					new_s <- permute_move(source, i = mi[ii,1], j = mi[ii,2])
+					new_lis <- c(cs, lis)[order(match(c(cs, lis), new_s))]
+					move_sequence_recursive(setdiff(symbols, cs), new_s, target, new_lis, vn, new_moves,
+																	ordered, rule=rule)
+				}
+			}
+		} else {
+			cs <- head(symbols, 1)
+			if (length(cs) == 0){ browser() }
+			mi <- move_pair(cs, source = source, target = target, lis = lis, rule = rule) 
+			mi <- matrix(mi, ncol = 2)
+			if (any(source[mi[,1]] %in% lis)){ browser() }
+			for (ii in seq(nrow(mi))){
+				new_moves <- cbind(moves, mi[ii,])
+				new_s <- permute_move(source, i = mi[ii,1], j = mi[ii,2])
+				new_lis <- c(cs, lis)[order(match(c(cs, lis), new_s))]
+				move_sequence_recursive(setdiff(symbols, cs), new_s, target, new_lis, vn, new_moves,
+																ordered, rule=rule)
+			}
+		}
+	}
+}
+
+random_string <- function(n = 1) {
+  a <- do.call(paste0, replicate(5, sample(LETTERS, n, TRUE), FALSE))
+  paste0(a, sprintf("%04d", sample(9999, n, TRUE)), sample(LETTERS, n, TRUE))
+}
+
+move_sequence <- function(symbols, s, t, lis, ordered=FALSE, rule="all"){
+	stopifnot(length(intersect(symbols, lis)) == 0)
+	stopifnot(length(s) == length(t))
+	varname <- random_string()
+	.GlobalEnv[[varname]] <- list()
+	move_sequence_recursive(symbols, s, t, lis, varname, ordered=ordered, rule=rule)
+	res <- .GlobalEnv[[varname]] 
+	base::remove(list = c(varname), envir = .GlobalEnv)
+	res <- Filter(function(x) !is.null(x), res)
+	return(res)
+}
+
+results <- Filter(function(x) !is.null(x), results)
+all(sapply(results, function(x) all(x$final == f2)))
+
+eval_cost <- function(M, R1, R2, V1, V2){
+	RV <- list(R=list(R1,R2), V=list(V1,V2))
+	cost <- c()
+	for (j in seq(ncol(M))){
+		ii <- M[1,j]; jj <- M[2,j]
+		if (ii < jj){
+			RV <- phtools::move_right(RV$R, RV$V, i = ii, j = jj) 
+			cost <- c(cost, RV$m)
+		} else {
+			RV <- phtools::move_left(RV$R, RV$V, i = ii, j = jj)
+			cost <- c(cost, RV$m)
+		}
+	}
+	return(cost)
+}
+
+move_costs <- list()
+for (i in seq(length(results))){
+	move_costs <- append(move_costs, list(eval_cost(results[[i]]$moves, R1, R2, V1, V2)))
+	print(i)
+}
+move_cost_totals <- rowSums(do.call(rbind, move_costs))
+
+best_case <- do.call(rbind, move_costs)[move_cost_totals == 14,]
+worst_case <- do.call(rbind, move_costs)[move_cost_totals == 22,]
+
+best_case_moves <- lapply()
+
+plot.default(NULL, NULL, xlim = c(1, ncol(best_case)), ylim = c(0, max(worst_case)))
+for (i in seq(nrow(best_case))){
+	lines(x = seq(ncol(best_case)), y = best_case[i,], col = "green")
+}
+for (i in seq(nrow(best_case))){
+	lines(x = seq(ncol(worst_case)), y = worst_case[i,], col = "red")
+}
+
+## Given a move sequence 'M', a sequence 's', and a LCA 'lca', executes the set of moves given by
+## 'M', returning the update sequence and its (updated) lca as a list
+capture_move_sequence <- function(M, s, lca){
+	res <- vector(mode = "list", length = ncol(M)+1L)
+	res[[1]] <- list(sequence = s, lca = lca)
+	for (i in seq(ncol(M))){
+		s <- permute_move(s, M[1,i], M[2,i])	
+		lca <- c(s[M[2,i]], lca)[order(match(c(s[M[2,i]], lca), s))]
+		res[[i+1]] <- list(sequence = s, lca = lca)
+	}
+	return(res)
+}
+
+
+## Given a move sequence and a set of letters
+print_lis_sequence <- function(M, s, lca){
+	ms <- capture_move_sequence(M, s, lca)
+	# sym <- sapply(seq(ncol(M)), function(i){ ms[[i]]$sequence[M[1,i]] })
+	
+	seq_colored <- lapply(ms, function(sq){ 
+		ss <- ifelse(sq$sequence %in% sq$lca, crayon::red(sq$sequence), crayon::black(sq$sequence)) 
+		ss[length(ss)] <- paste0(tail(ss, 1L), "\n")
+		return(ss)
+	})
+	C <- do.call(rbind, seq_colored)
+	for (i in seq(ncol(M))){
+		C[i, M[1,i]] <- crayon::blue(crayon::strip_style(C[i, M[1,i]]))
+		C[i+1, M[2,i]] <- crayon::green(crayon::strip_style(C[i+1, M[2,i]]))
+	}
+	seq_colored <- lapply(1:nrow(C), function(i){ C[i,] })
+	cat(c("", unlist(seq_colored)))
+}
+
+best_idx <- which(move_cost_totals == 14)
+
+print_lis_sequence(results[[best_idx[1]]]$moves, f1, f_lis)
+
+
+do.call( rbind, lapply(results[move_cost_totals == 14], function(x) x$moves))[1:10,]
+best_case[1:5,]
+
+cat(ifelse(f1 %in% f_lis, crayon::red(f1), crayon::black(f1)))
+cat(ifelse(f2 %in% f_lis, crayon::red(f2), crayon::black(f2)))
+
+
+s_levelorder <- straverse(level_order(st), simplex_to_str)
+s_preorder <- straverse(preorder(st), simplex_to_str)
+
+st <- simplex_tree(combn(6,5))
+# ds <- straverse(level_order(st), length) - 1L
+# ds <- straverse(preorder(st), length) - 1L
+D <- pbgrad::boundary_matrix(st)
+# D <- D[match(s_preorder, s_levelorder),match(s_preorder, s_levelorder)]
+p <- seq(ncol(D))
+p[ds == 0L] <- sample(which(ds == 0L))
+
+RV <- pbgrad::reduce(D[p,p])
+p <- 1L
+R1 <- RV$R[ds == p-1, ds == p]
+V1 <- RV$V[ds == p, ds == p]
+R2 <- RV$R[ds == p, ds == p+1]
+V2 <- RV$V[ds == p+1, ds == p+1]
+
+combn(5,2, function(x){
+	move_left(R = list(R1, R2), V = list(V1, V2), i = x[2], j = x[1])$m
+})
+
+combn(5,2, function(x){
+	move_right(R = list(R1, R2), V = list(V1, V2), i = x[1], j = x[2])$m
+})
+
+apply(combn(10,2) + 5, 2, function(x){
+	move_right(R = list(R1, R2), V = list(V1, V2), i = x[1], j = x[2])$m
+})
+
+st <- pbgrad::r_geometric_complex(12, radius = 0.15, dim = 2)
+ds <- straverse(level_order(st), length) - 1L
+D <- pbgrad::boundary_matrix(st)
+p <- seq(ncol(D))
+p[ds == 0L] <- sample(which(ds == 0L))
+RV <- pbgrad::reduce(D[p,p])
+p <- 1L
+R1 <- RV$R[ds == p-1, ds == p]
+V1 <- RV$V[ds == p, ds == p]
+R2 <- RV$R[ds == p, ds == p+1]
+V2 <- RV$V[ds == p+1, ds == p+1]
+
+f1 <- colnames(R1)
+f2 <- sample(f1)
+f_lis <- f2[phtools:::longest_subseq(match(f2, f1))]
+to_move <- setdiff(f1, f_lis)
+results <- list()
+move_sequence(symbols = to_move, s = f1, t = f2, lis = f_lis)
+results <- Filter(function(x) !is.null(x), results)
+
+move_costs <- list()
+for (i in seq(length(results))){
+	move_costs <- append(move_costs, list(eval_cost(results[[i]]$moves, R1, R2, V1, V2)))
+	print(i)
+}
+move_cost_totals <- rowSums(do.call(rbind, move_costs))
+
+## moving 2 -> 9 is always a suboptimal strategy
+first_sym_best <- sapply(results[move_cost_totals == 3], function(x){ x$moves[1,1] })
+first_sym_worst <- sapply(results[move_cost_totals == 7], function(x){ x$moves[1,1] })
+
+do.call(rbind, move_costs)[move_cost_totals == 3,]
+worst_costs <- do.call(rbind, move_costs)[move_cost_totals == 7,]
+best_costs <- do.call(rbind, move_costs)[move_cost_totals == 3,]
+
+## All best costs have the same frequency, but not pattern 
+
+
+print_lis_sequence(results[move_cost_totals == 3][[1]]$moves, f1, f_lis)
+
+
+st <- simplex_tree(combn(3,2))
+ds <- straverse(level_order(st), length) - 1L
+D <- pbgrad::boundary_matrix(st)
+# p <- c(1,2,3,5,6,4)
+p <- seq(6)
+RV <- pbgrad::reduce(D[p,p])
+p <- 1L
+R1 <- RV$R[ds == p-1, ds == p]
+V1 <- RV$V[ds == p, ds == p]
+R2 <- RV$R[ds == p, ds == p+1]
+V2 <- RV$V[ds == p+1, ds == p+1]
+
+move_right(list(R1, R2), list(V1,V2), i = 1, j = 2)
+
+
+
+## Bow tie example: fixed source and target
+S <- simplex_tree(matrix(c(1,2,1,3,1,4,1,5,2,4,3,5), nrow = 2))
+ds <- straverse(level_order(S), length) - 1L
+D <- pbgrad::boundary_matrix(S)
+p1 <- c(6,4,2,5,1,3)+5
+p2 <- c(2,3,6,4,1,5)+5
+v1 <- seq(S$n_simplices[1])
+v2 <- v1
+
+## Circle example: fixed source and target
+S <- simplex_tree(rbind(1:7, c(2:7,1)))
+ds <- straverse(level_order(S), length) - 1L
+D <- pbgrad::boundary_matrix(S)
+p1 <- c(1,3,4,5,6,7,2)+S$n_simplices[1]
+p2 <- c(3,4,5,6,7,2,1)+S$n_simplices[1]
+v1 <- c(1,6,7,5,3,2,4)
+v2 <- v1
+# v1 <- sample(seq(S$n_simplices[1])) ### try: 1,6,7,5,3,2,4
+
+f1 <- structure(seq(ncol(D)), names = simplex_to_str(level_order(S))[c(v1, p1)])
+f2 <- structure(seq(ncol(D)), names = simplex_to_str(level_order(S))[c(v2, p2)])
+RV <- pbgrad::reduce(D[c(v1, p1), c(v1, p1)])
+invisible(pbgrad::update_RV(RV, f0 = f1, f1 = f2, f = function(R,W,s){ print(s) }))
+# move_right(R = RV$R, V = RV$V, i = , j = )
+
+## teratrapod example
+S <- simplex_tree(matrix(c(1,2,2,3,1,3,1,4,2,4,3,4), nrow = 2))
+ds <- straverse(level_order(S), length) - 1L
+D <- pbgrad::boundary_matrix(S)
+p1 <- c(3,5,6,1,4,2)+S$n_simplices[1]
+p2 <- c(1,4,2,3,5,6)+S$n_simplices[1]
+v1 <- seq(seq(S$n_simplices[1]))
+v2 <- v1
+
+RV <- pbgrad::reduce(D[c(v1, p1), c(v1, p1)])
+p <- 1L
+R1 <- RV$R[ds == p-1, ds == p]
+V1 <- RV$V[ds == p, ds == p]
+R2 <- RV$R[ds == p, ds == p+1]
+V2 <- RV$V[ds == p+1, ds == p+1]
+
+# move_right(R = list(R1, R2), V = list(V1, V2), i = 1, j = 7)$m
+# v1 <- sample(seq(S$n_simplices[1]))
+# v2 <- v1
+f1 <- structure(seq(ncol(D)), names = simplex_to_str(level_order(S))[c(v1, p1)])
+f2 <- structure(seq(ncol(D)), names = simplex_to_str(level_order(S))[c(v2, p2)])
+RV <- pbgrad::reduce(D[c(v1, p1), c(v1, p1)])
+invisible(pbgrad::update_RV(RV, f0 = f1, f1 = f2, f = function(R,W,s){
+	print(s)
+	pbgrad::plot_dgm(pbgrad::extract_pairs(RV$R)) 
+}))
+
+
+fs <- simplex_to_str(do.call(cbind, as.list(k_simplices(S, k = 1))[p1-S$n_simplices[1]]))
+ft <- simplex_to_str(do.call(cbind, as.list(k_simplices(S, k = 1))[p2-S$n_simplices[1]]))
+f_lcs <- ft[phtools:::longest_subseq(match(ft, fs))]
+# all_lcs <- phtools:::all_lcs(seq_along(fs), match(ft, fs))
+# f_lcs <- fs[all_lcs[[2]]]
+
+results <- move_sequence(setdiff(fs, f_lcs), s = fs, t = ft, lis = f_lcs)
+
+
+all_v_results <- rankr::permn(seq(S$n_simplices[1]), FUN = function(vp){ 
+	RV <- pbgrad::reduce(D[c(vp, p1), c(vp, p1)])
+	p <- 1L
+	R1 <- RV$R[ds == p-1, ds == p]
+	V1 <- RV$V[ds == p, ds == p]
+	R2 <- RV$R[ds == p, ds == p+1]
+	V2 <- RV$V[ds == p+1, ds == p+1]
+	costs <- sapply(results, function(x){
+		eval_cost(M = x$moves, R1 = R1, R2 = R2, V1 = V1, V2 = V2)
+	})
+	return(costs)
+})
+
+## Decent heuristic: choose strategy with minimum total absolute difference 
+sapply(results, function(x){ abs(sum(apply(x$moves, 2, diff))) })
+
+res_strats <- sapply(seq(dim(all_v_results)[3]), function(i){ colSums(all_v_results[1:3, 1:6, i]) })
+
+## Why the desparity in costs here? 
+colSums(costs)
+
+print_lis_sequence(results[[3]]$moves, s = fs, lca = f_lca)
+
+cat(ifelse(fs %in% f_lca, crayon::red(fs), crayon::black(fs)))
+cat(ifelse(ft %in% f_lca, crayon::red(ft), crayon::black(ft)))
+
+
+## tetrapod: 2nd best strategy 
+rv1 <- move_right(R = list(R1, R2), V = list(V1, V2), i = 2, j = 6)
+rv2 <- move_right(R = rv1$R, V = rv1$V, i = 2, j = 6)
+rv3 <- move_right(R = rv2$R, V = rv2$V, i = 1, j = 4)
+
+collect_V <- function(RV, M){
+	RV <- list(R=list(R1,R2), V=list(V1,V2))
+	cost <- c()
+	result_v <- list(V1)
+	for (j in seq(ncol(M))){
+		ii <- M[1,j]; jj <- M[2,j]
+		if (ii < jj){
+			RV <- phtools::move_right(RV$R, RV$V, i = ii, j = jj) 
+		} else {
+			RV <- phtools::move_left(RV$R, RV$V, i = ii, j = jj)
+		}
+		result_v <- append(result_v, list(RV$V[[1]]))
+	}
+	return(result_v)
+}
+
+print_ms_matrices <- function(x, M){
+	stopifnot(is.list(x), is.matrix(M), nrow(M) == 2)
+	x_str <- lapply(x, function(m){ Matrix::formatSparseM(m) })
+	for (i in seq(ncol(M))){
+		{ ii <- M[1,i]; jj <- M[2,i] }
+		if (ii < jj) { # moving right 
+			x_str[[i]][ii,] <- crayon::blue(x_str[[i]][ii,])
+			x_str[[i]][jj,] <- crayon::green(x_str[[i]][jj,])
+		} else {
+			x_str[[i]][,ii] <- crayon::blue(x_str[[i]][,ii])
+			x_str[[i]][,jj] <- crayon::green(x_str[[i]][,jj])
+		}
+	}
+	x_str <- lapply(x_str, function(m){ cbind(m, " ") })
+	apply(do.call(cbind, x_str), 1, function(msg){ cat(c(msg, "\n")) })
+	# print(do.call(cbind, x_str), quote = FALSE, right = TRUE)
+	return(invisible(NULL))
+}
+
+
+print_ms_matrices(
+	x = collect_V(list(R=list(R1, R2), V=list(V1, V2)), M = results[[6]]$moves), 
+	M = results[[6]]$moves
+)
+
+```
+
+## Bowtie example 
+```{r}
+S <- simplex_tree(matrix(c(1,2,1,3,1,4,1,5,2,4,3,5), nrow = 2))
+ds <- straverse(level_order(S), length) - 1L
+D <- pbgrad::boundary_matrix(S)
+p1 <- c(6,4,2,5,1,3)+5
+p2 <- c(2,3,6,4,1,5)+5
+v1 <- seq(S$n_simplices[1])
+v2 <- v1
+plot(S, coords = igraph::layout.auto(igraph::graph_from_edgelist(S$edges)))
+
+
+fs <- simplex_to_str(do.call(cbind, as.list(k_simplices(S, k = 1))[p1-S$n_simplices[1]]))
+ft <- simplex_to_str(do.call(cbind, as.list(k_simplices(S, k = 1))[p2-S$n_simplices[1]]))
+f_lcs <- ft[phtools:::longest_subseq(match(ft, fs))]
+results <- move_sequence(setdiff(fs, f_lcs), s = fs, t = ft, lis = f_lcs)
+
+```
+
+
+## Greedy non-optimal idea
+Contradictory proof that greedy procedure can be arbitrarily bad
+```{r}
+S <- simplex_tree(matrix(c(1,2,2,3,1,3,1,4,2,4,3,4), nrow = 2))
+plot(S, coords = igraph::layout.auto(igraph::graph_from_edgelist(S$edges)))
+ds <- straverse(level_order(S), length) - 1L
+D <- pbgrad::boundary_matrix(S)
+p1 <- c(3,5,6,1,4,2)+S$n_simplices[1]
+p2 <- c(1,4,2,3,5,6)+S$n_simplices[1]
+v1 <- seq(seq(S$n_simplices[1]))
+v2 <- v1
+
+## Do initial reduction
+RV <- pbgrad::reduce(D[c(v1, p1), c(v1, p1)])
+p <- 1L
+R1 <- RV$R[ds == p-1, ds == p]
+V1 <- RV$V[ds == p, ds == p]
+R2 <- RV$R[ds == p, ds == p+1]
+V2 <- RV$V[ds == p+1, ds == p+1]
+
+## Get LCS 
+fs <- simplex_to_str(do.call(cbind, as.list(k_simplices(S, k = 1))[p1-S$n_simplices[1]]))
+ft <- simplex_to_str(do.call(cbind, as.list(k_simplices(S, k = 1))[p2-S$n_simplices[1]]))
+f_lcs <- fs[phtools::perm_lcs(match(ft, fs))]
+
+#all_lcs <- phtools:::all_lcs(seq_along(fs), match(ft, fs))
+# f_lcs <- fs[all_lcs[[2]]]
+
+## Get all possible move sequences
+results <- move_sequence(setdiff(fs, f_lcs), s = fs, t = ft, lcs = f_lcs)
+
+## Extract cost of each move sequence
+costs <- sapply(results, function(x){ 
+	eval_cost(M = x$moves, R1 = R1, R2 = R2, V1 = V1, V2 = V2)
+})
+
+# > costs
+#      [,1] [,2] [,3] [,4] [,5] [,6]
+# [1,]    2    2    4    4    2    2
+# [2,]    3    2    2    3    2    5
+# [3,]    1    4    2    3    4    3
+# colSums(costs) == 6  8  8 10  8 10
+
+best_idx <- which.min(colSums(costs))
+plot_moves_pp(results[[best_idx]]$moves, labels = fs, lcs = f_lcs)
+print_lis_sequence(results[[best_idx]]$moves, s = fs, lca = f_lcs)
+
+worst_idx <-  which.max(colSums(costs))
+plot_moves_pp(results[[worst_idx]]$moves, labels = fs, lcs = f_lcs)
+print_lis_sequence(results[[worst_idx]]$moves, s = fs, lca = f_lcs)
+# print_ms_matrices(
+# 	x = collect_V(list(R=list(R1, R2), V=list(V1, V2)), M = results[[1]]$moves), 
+# 	M = results[[1]]$moves
+# )
+
+M <- greedy_min_cross(fs, ft, f_lcs)
+plot_moves_pp(M, labels = fs, lcs = f_lcs)
+```
+
+```{r}
+s <- seq_along(fs)
+t <- match(fs, ft)
+schedules <- lapply(results, function(m) m$moves)
+
+spearman_cost <- lapply(schedules, function(sc){
+	x <- s
+	ac <- c()
+	for (i in seq(ncol(sc))){
+		y <- x
+		x <- permute_move(x, sc[1,i], sc[2,i])
+		ac <- c(ac, spearman_dist(x,y))
+	}
+	return(ac)
+})
+
+
+kendall_cost <- lapply(schedules, function(sc){
+	x <- s
+	ac <- c()
+	for (i in seq(ncol(sc))){
+		y <- x
+		x <- permute_move(x, sc[1,i], sc[2,i])
+		ac <- c(ac, rankr::kendall_dist(x,y))
+	}
+	return(ac)
+})
+
+costs
+do.call(cbind, spearman_cost)
+do.call(cbind, kendall_cost)
+
+```
+
+```{r}
+a <- sample(seq(10)) # 2  7  8  9  1  6  3  4  5 10
+b <- sample(a)			 # 10  1  8  3  4  6  7  2  9  5
+lcs <- perm_lcs(a,b)
+schedules <- move_sequence(setdiff(a, lcs), a, b, lcs)
+schedules <- lapply(schedules, function(sc) sc$moves)
+
+spearman_cost <- lapply(schedules, function(sc){
+	x <- a
+	ac <- c()
+	for (i in seq(ncol(sc))){
+		y <- x
+		x <- permute_move(x, sc[1,i], sc[2,i])
+		ac <- c(ac, spearman_dist(x,y))
+	}
+	return(ac)
+})
+
+
+kendall_cost <- lapply(schedules, function(sc){
+	x <- a
+	ac <- c()
+	for (i in seq(ncol(sc))){
+		y <- x
+		x <- permute_move(x, sc[1,i], sc[2,i])
+		ac <- c(ac, rankdist::DistancePair(x,y))
+	}
+	return(ac)
+})
+
+sc <- do.call(cbind, spearman_cost)
+kc <- do.call(cbind, kendall_cost)
+
+schedules[colSums(sc) == min(colSums(sc))]
+schedules[colSums(kc) == min(colSums(kc))]
+
+for (sym in setdiff(a, lcs)){
+	x <- a
+	pair <- move_pair(sym, source = a, target = b, lcs = lcs)
+	print(rankdist::DistancePair(a, permute_move(x, pair[1], pair[2])))
+}
+
+greedy_step1 <- which(sapply(schedules, function(sc){ all(sc[,1] == c(6,8)) }))
+
+
+# a <- sample(seq(30))
+# b <- sample(a)
+
+steps <- list()
+costs <- c()
+m <- matrix(0, nrow = 2, ncol = 0)
+x <- a
+lcs <- perm_lcs(a,b)
+while(any(x != b)){
+	step_costs <- sapply(setdiff(x, lcs), function(sym){
+		pair <- move_pair(sym, source = x, target = b, lcs = lcs)
+		# rankdist::DistancePair(x, permute_move(x, pair[1], pair[2]))
+		spearman_dist(x, permute_move(x, pair[1], pair[2]))
+	})
+	greedy_idx <- which.min(step_costs)
+	pair <- move_pair(setdiff(x, lcs)[greedy_idx], source = x, target = b, lcs = lcs)
+	m <- cbind(m, pair[1:2])
+	cs <- x[pair[1]]
+	y <- x
+	x <- permute_move(x, pair[1], pair[2])
+	costs <- c(costs, spearman_dist(x, y))
+	lcs <- c(cs, lcs)[order(match(c(cs, lcs), x))]
+	steps <- append(steps, list(step_costs))
+}
+sum(sapply(steps, min))
+
+
+
+sc <- bubble_sort(match(p,q))
+x <- p
+for (i in seq(ncol(sc))){
+	y <- x
+	x <- permute_move(x, sc[1,i],sc[2,i])
+	#print(rankdist::DistancePair(x,y))
+	print(rankdist::DistancePair(x,q))
+	#print(spearman_dist(x,q))
+}
+```
+
+
+## Greedy non-optimal idea (moving right)
+Contradictory proof that greedy procedure can be arbitrarily bad
+```{r}
+library(simplextree)
+S <- simplex_tree(matrix(c(1,2,2,3,1,3,1,4,2,4,3,4), nrow = 2))
+plot(S, coords = igraph::layout.auto(igraph::graph_from_edgelist(S$edges)))
+ds <- straverse(level_order(S), length) - 1L
+D <- pbgrad::boundary_matrix(S)
+p1 <- c(3,5,6,1,4,2)+S$n_simplices[1]
+p2 <- c(1,4,2,3,5,6)+S$n_simplices[1]
+v1 <- seq(seq(S$n_simplices[1]))
+v2 <- v1
+
+## Do initial reduction
+RV <- pbgrad::reduce(D[c(v1, p1), c(v1, p1)])
+p <- 1L
+R1 <- RV$R[ds == p-1, ds == p]
+V1 <- RV$V[ds == p, ds == p]
+R2 <- RV$R[ds == p, ds == p+1]
+V2 <- RV$V[ds == p+1, ds == p+1]
+
+## Get LCS 
+fs <- simplex_to_str(do.call(cbind, as.list(k_simplices(S, k = 1))[p1-S$n_simplices[1]]))
+ft <- simplex_to_str(do.call(cbind, as.list(k_simplices(S, k = 1))[p2-S$n_simplices[1]]))
+f_lcs <- phtools::perm_lcs(match(ft, fs))
+f_lcs <- fs[f_lcs+3]
+
+## Get all possible move sequences
+results <- move_sequence(setdiff(fs, f_lcs), s = fs, t = ft, lcs = f_lcs)
+
+## Extract cost of each move sequence
+costs <- sapply(results, function(x){ 
+	eval_cost(M = x$moves, R1 = R1, R2 = R2, V1 = V1, V2 = V2)
+})
+
+## Greedy seems to work moving right only! 
+#      [,1] [,2] [,3] [,4] [,5] [,6]
+# [1,]    4    4    2    2    2    2
+# [2,]    4    2    3    2    4    3
+# [3,]    2    1    1    0    1    0
+
+# colSums(costs) == 10  7  6  4  7  5
+## Greedy chooses schedule 6 w/ cost = 5
+```
+
+```{r}
+## Greedy schedule is *not* optimal in spearman dist
+p <- seq(10)
+q <- sample(p)
+all_lis <- phtools:::enumerate_lis(q)
+
+all_schedules <- apply(all_lis, 2, function(lcs){
+	schedules <- lapply(move_sequence(setdiff(p, lcs), s = p, t = q, lcs = lcs), function(m) m$moves)
+	sched_cost <- sapply(schedules, function(s) schedule_cost(p, s, cost = "kendall") )
+	return(sched_cost)
+})
+
+greedy_costs <- apply(all_lis, 2, function(lcs){
+	gs <- greedy_min_cross(p,q,lcs)
+	sched_cost <- schedule_cost(p, gs, cost = "kendall")
+	return(sched_cost)
+})
+
+range(unlist(all_schedules))
+range(unlist(greedy_costs))
+# greedy_cost <- schedule_cost(p, , "spearman")
+# P <- as.matrix(permutations::allperms(6))
+# phtools::all_lcs(p, q)
+
+max(sapply(all_schedules, function(x) if (length(x) > 0) max(x) else 0))
+```
+
+
+## Counting number of move schedules 
+```{r}
+P <- rankr::permn(6)
+C <- combn(ncol(P), 2) # [,sample(seq(choose(ncol(P),2)), size = 1000)]
+
+res <- apply(C, 2, function(x){
+	{ a <- P[,x[1]]; b <- P[,x[2]] }
+	all_lis <- phtools:::all_lcs(a, b)
+	res <- sapply(all_lis, function(lcs){
+		m <- move_sequence(symbols = setdiff(a, lcs), s = a, t = b, lis = lcs, ordered = TRUE)
+		return(length(m))
+	})
+	return(c(k = length(all_lis[[1]]), max(res)))
+})
+## Path lengths given k
+table(res[2, res[1,] == 1])
+table(res[2, res[1,] == 2])
+table(res[2, res[1,] == 3])
+table(res[2, res[1,] == 4])
+table(res[2, res[1,] == 5])
+table(res[2, res[1,] == 6])
+
+
+res <- lapply(4:15, function(i){
+	a <- 1:i
+	b <- c(1, 2, 3, rev(4:i))
+	all_m <- sapply(phtools:::all_lcs(a,b), function(lcs){
+		m <- move_sequence(symbols = setdiff(a, lcs), s = a, t = b, lis = lcs, ordered = TRUE)
+		length(m)
+	})
+	print(sprintf("%d: %d", i, max(all_m)))
+	return(max(all_m))
+})
+
+
+sapply(1:9, function(i){
+	
+})
+
+
+ms <- lapply(m, function(x){ x$moves })
+
+## For sequence of length 5, we have in the worst case 58 (!) move schedules
+
+```
+
+
+# Greedy Heuristic 
+Goal is to minimize _crossings_
+```{r}
+a <- fs
+b <- ft 
+lcs <- f_lcs
+
+## Get intervals 
+greedy_min_cross <- function(a, b, lcs, opt=c("minimize", "maximize"), use_lcs=FALSE){
+	symbols <- setdiff(a, lcs)
+	stopifnot(all(c(symbols, lcs) %in% a))
+	
+	if (missing(opt) || opt == "minimize"){
+		opt <- min
+		ignore_val <- Inf
+	} else {
+		opt <- max
+		ignore_val <- -Inf
+	}
+	
+	conflicts <- function(interval, conflicts){ 
+		stopifnot(length(interval) == 2)
+		interval <- sort(interval)
+		sum(conflicts >= interval[1] & conflicts <= interval[2]) 
+	}
+	## Returns the net cost of performing the move given by int1
+	interval_cost <- function(s, o){
+		overlap <- intersect(seq(s[1],s[2]), seq(o[1],o[2])) 
+		if (length(overlap) == 0){ return(0) }
+		if (min(o) > min(s) && max(o) < max(s)){ return(0) }
+		if (min(s) > min(o) && max(s) < max(o)){ return(0) }
+		smr <- s[1] < s[2] ## s interval moving right
+		omr <- o[1] < o[2] ## o interval moving right
+		if (smr && omr){
+			if (s[1] < o[1] && s[2] < o[2]){ return(1) }
+			if (s[1] > o[1] && o[2] < s[2]){ return(-1) }
+			if (s[2] == o[2]){ return(-1)}
+			browser()
+		}
+		if (!smr && !omr){
+			if (o[2] < s[2] && o[1] < s[1]){ return(1) }
+			if (s[2] < o[2] && s[1] < o[1]){ return(-1) }
+			if (s[2] == o[2]){ return(-1) }
+			browser()
+		}
+		if (s[1] %in% seq(o[1], o[2])){ return(-1) }
+		if (s[2] %in% seq(o[1], o[2])){ return(1) }
+		browser()
+	}
+	
+	moves <- matrix(0, nrow = 2, ncol = 0)
+	while(length(symbols) > 0){
+		I <- sapply(symbols, function(cs){ 
+			move_pair(cs, source = a, target = b, lis = lcs, rule = "closest") 
+		})
+		
+		## Append LCS 
+		if (use_lcs){
+			I <- cbind(I, rbind(match(lcs, a), match(lcs, b)))
+		}
+		
+		## Count how many pairwise intervals change
+		if (ncol(I) <= 1){
+			s_cost <- 0
+		} else {
+			s_cost <- sapply(seq(ncol(I)), function(si){
+				o_diff <- sapply(setdiff(seq(ncol(I)), si), function(oi){ interval_cost(I[,si], I[,oi]) })
+				sum(o_diff)
+			})
+		}
+		if (use_lcs){ s_cost[tail(seq(ncol(I)), length(lcs))] <- ignore_val }
+		opt_idx <- which(s_cost == opt(s_cost))
+		if (length(opt_idx) == 1){
+			mi <- I[,opt_idx]
+		} else {
+			I_size <- apply(I[,opt_idx], 2, function(x){ abs(diff(x)) })
+			mi <- I[,head(opt_idx[I_size == opt(I_size)], 1L)]
+		}
+		# mi <- I[,opt(s_cost)]
+		moves <- cbind(moves, mi)
+		lcs <- c(lcs, a[mi[1]])
+		a <- permute_move(a, i = mi[1], j = mi[2])
+		lcs <- lcs[order(match(lcs, a))]
+		symbols <- setdiff(symbols, lcs)
+	}
+	return(unname(moves))
+}
+
+a <- 1:6
+b <- sample(a)
+
+num_crossing <- function(M){ sum(abs(apply(M, 2, diff))) }
+
+
+P <- rankr::permn(6)
+costs <- sapply(seq(ncol(P)), function(i){
+	b <- P[,i]
+	lcs <- b[phtools:::longest_subseq(match(b, a))]
+	if (length(lcs) == length(b)){ return(TRUE) }
+	all_m <- move_sequence(setdiff(a, lcs), s = a, t = b, lis = lcs, ordered = FALSE)
+	nc_truth <- min(sapply(all_m, function(x){ num_crossing(x$moves) }))
+	nc_greed <- num_crossing(greedy_min_cross(a, b, lcs))
+	return(nc_greed == nc_truth)
+})
+
+which(!costs)
+
+M <- greedy_min_cross(a, b, lcs)
+
+print_lis_sequence(M, a, lcs)
+
+## Big combinatorial example 
+f <- 1:128
+g <- sample(f)
+lcs <- g[phtools:::longest_subseq(match(g, f))]
+
+natural_moves <- function(a, b, lcs){
+	symbols <- setdiff(b, lcs)
+	move_sequence(symbols, s = a, t = b, lis = lcs, ordered = TRUE, rule = "closest")[[1]]$moves
+}
+
+# M1 <- natural_moves(a,b,lcs)
+# M2 <- greedy_min_cross(a, b, lcs, opt = "minimize")
+
+num_crossing(natural_moves(f, g, lcs))
+num_crossing(greedy_min_cross(f, g, lcs, opt = "minimize", use_lcs = TRUE))
+num_crossing(greedy_min_cross(f, g, lcs, opt = "minimize", use_lcs = FALSE))
+num_crossing(greedy_min_cross(f, g, lcs, opt = "maximize", use_lcs = TRUE))
+num_crossing(greedy_min_cross(f, g, lcs, opt = "maximize", use_lcs = FALSE))
+
+
+
+
+dev.off()
+layout(matrix(1:2, ncol = 2))
+plot_moves_pp(M1, labels = a, lcs = lcs, main = sprintf("Natural schedule (%d)", num_crossing(M1)))
+plot_moves_pp(M2, labels = a, lcs = lcs, main = sprintf("Greedy schedule (%d)", num_crossing(M2)))
+```
+
+One-sided crossing minimization
+```{r}
+I <- pbgrad:::SearchInStrip(f,g,0,1,one_based = TRUE)
+
+```
+
+```{r}
+# plot.default(NULL, NULL, xlim=c(0,1), ylim=c(0,1))
+xy <- .Last.value
+xy <- do.call(cbind, xy)
+
+S <- smooth.spline(xy, all.knots = TRUE, spar = 0.01)
+f <- function(x){ do.call(cbind, predict(S, x))[,2] }
+plot(f, from = 0, to = 1)
+
+all_crit <- function(f, n=100, eps = .Machine$double.eps){
+	I <- seq(0.0, 1.0, length.out = 100)
+	C <- c()
+	for (i in seq(length(I) - 1)){
+		pc <- optimize(f, interval=c(I[i], I[i+1]), tol = eps)
+		lb <- f(I[i])
+		ub <- f(I[i+1])
+		is_tri <- all(pc$objective < c(lb,ub))
+		is_boundary <- any(abs(pc$minimum - c(I[i], I[i+1])) <= sqrt(eps))
+		if (is_tri && !is_boundary){
+			C <- c(C, min=pc$minimum)
+		}
+	}
+	for (i in seq(length(I) - 1)){
+		pc <- optimize(f, interval=c(I[i], I[i+1]), tol = eps, maximum = TRUE)
+		lb <- f(I[i])
+		ub <- f(I[i+1])
+		is_tri <- all(pc$objective > c(lb,ub))
+		is_boundary <- any(abs(pc$maximum - c(I[i], I[i+1])) <= sqrt(eps))
+		if (is_tri && !is_boundary){
+			C <- c(C, max=pc$maximum)
+		}
+	}
+	return(C)
+}
+
+f_diagram <- function(f, ...){
+	xc <- sort(all_crit(f, ...))
+	yc <- f(xc)
+	xo <- xc[order(yc)]
+	yo <- yc[order(yc)]
+	#membership <- seq(length(xo))
+	membership <- seq(length(xc))[order(yc)] ## value is order on domain, ordered by range
+	# ds <- simplextree:::union_find(length(xc))
+	path_connected <- function(ix, m){
+    pc <- seq(length(m))
+    X <- sort(m)
+    for (ii in seq(length(X)-1)){
+    	if (abs(X[ii] - X[ii+1]) == 1){
+    		pc[ii+1] <- pc[ii]
+    	}
+    }
+    return(pc[match(m, X)])
+	}
+	stack <- c()
+	pairs <- matrix(0, ncol = 0, nrow = 2)
+	for (i in seq(length(yo))){
+		pt_type <- names(yo)[i]
+		cp <- yo[i]
+		if (pt_type == "min"){
+			stack <- c(stack, cp)
+		} else {
+			# cc <- ds$connected_components()
+			# pt_id <- membership[i]
+			# if (pt_id == 1){
+			# 	ds$union_all(match(c(1,2), membership)-1)
+			# } else if (pt_id == length(xo)){
+			# 	ds$union_all(match(c(pt_id,pt_id-1), membership)-1)
+			# } else {
+			# 	ds$union_all(match(c(pt_id-1,pt_id,pt_id+1), membership)-1)
+			# }
+			# ids$union_all(which(abs(membership - membership[i]) <= 1) - 1L)
+			# cc <- ds$connected_components()
+			# if (any(cc[i] == cc[match(stack, yo)])){
+			
+			## Get minima indices in y-order
+			# minima_idx <- which(abs(membership[i] - membership) == 1)
+			pc <- path_connected(membership[i], membership[1:i])
+			connected_domain_ids <- membership[1:i][which(pc == pc[i])]
+			connected_crit <- yc[connected_domain_ids]
+			min_idx_on_stack <- na.omit(match(connected_crit, stack))
+			if (length(min_idx_on_stack) == 0){
+				browser()
+			}
+			stack_idx <- max(min_idx_on_stack)
+			pairs <- cbind(pairs, c(stack[stack_idx], cp))
+			stack <- stack[-stack_idx]
+			# } else {
+			# 	browser()
+			# }
+		}
+	}
+	if (length(stack) != 0){ pairs <- cbind(pairs, rbind(stack, Inf)) }
+	return(list(dgm=cbind(0, t(pairs)), critical_pts=rbind(xc, yc)))	
+}
+
+
+
+animation::saveGIF({
+	p <- seq(0.01, 0.50, length.out = 20)
+	p <- c(p, rev(p), p, rev(p))
+	layout(matrix(c(1,2), ncol = 2))
+	for (pi in p){
+		S <- smooth.spline(xy, all.knots = TRUE, spar = pi)
+		f <- function(x){ do.call(cbind, predict(S, x))[,2] }
+		dgm <- f_diagram(f)
+		pbgrad::plot_dgm(dgm$dgm, dim = 0L)
+		plot(f, from = 0, to = 1, xlab = "x", xaxt='n', yaxt="n", ylab = "f(x)")
+		points(t(dgm$critical_pts), col = "red", pch = 20)
+	}
+}, "stability1.gif", interval = 0.1)
+
+```
+
+```{r}
+
+```
+
+
+
+Bigger example 
+```{r}
+set.seed(1234)
+S <- pbgrad::r_geometric_complex(10, radius = 0.20)
+plot(S, coords = igraph::layout.auto(igraph::graph_from_edgelist(S$edges)))
+ds <- straverse(level_order(S), length) - 1L
+D <- pbgrad::boundary_matrix(S)
+p1 <- seq(S$n_simplices[2])+S$n_simplices[1]
+p2 <- sample(p1)
+v1 <- sample(seq(S$n_simplices[1]))
+v2 <- v1
+
+## Do initial reduction
+RV <- pbgrad::reduce(D[c(v1, p1), c(v1, p1)])
+p <- 1L
+R1 <- RV$R[ds == p-1, ds == p]
+V1 <- RV$V[ds == p, ds == p]
+R2 <- RV$R[ds == p, ds == p+1]
+V2 <- RV$V[ds == p+1, ds == p+1]
+
+## Get LCS 
+fs <- simplex_to_str(do.call(cbind, as.list(k_simplices(S, k = 1))[p1-S$n_simplices[1]]))
+ft <- simplex_to_str(do.call(cbind, as.list(k_simplices(S, k = 1))[p2-S$n_simplices[1]]))
+f_lcs <- ft[phtools:::longest_subseq(match(ft, fs))]
+
+to_move <- setdiff(fs, f_lcs)
+P <- permutations::rperm(n = 150, r = length(to_move))
+P <- matrix(P, nrow = length(to_move), byrow = TRUE)
+results <- apply(P, 2, function(p){
+	move_sequence(symbols = to_move[p], s = fs, t = ft, lis = f_lcs, ordered = TRUE)
+})
+results <- lapply(results, function(x) x[[1]]$moves)
+
+costs <- lapply(results, function(M){ eval_cost(M, R1, R2, V1, V2) })
+
+hist(sapply(costs, sum))
+
+greedy_M <- greedy_min_cross(fs, ft, lcs = f_lcs)
+eval_cost(greedy_M, R1, R2, V1, V2)
+sum(eval_cost(greedy_M, R1, R2, V1, V2))
+
+min(sapply(results, function(x) sum(abs(apply(x, 2, diff)))))
+
+plot_moves_pp(greedy_M, labels = fs, lcs = f_lcs)
+sum(abs(apply(greedy_M, 2, diff)))
+```
+
+## Insertion sort and other schedules
+```{r}
+insertion_sort <- function(A){
+	P <- matrix(0, ncol = 0, nrow = 2)
+  for (j in 2:length(A)) {
+    key <- A[j] 
+    i <- j - 1 
+    while (i > 0 && A[i] > key) {
+    	P <- cbind(P, c(i, i+1))
+      A[(i + 1)] <- A[i]
+      i <- i - 1 
+    }
+    A[(i + 1)] = key
+  }
+  return(list(A=A,P=P))
+} 
+
+M_is <- insertion_sort(match(fs, ft))$P
+sum(eval_cost(M_is, R1, R2, V1, V2))
+sum(eval_cost(M_is[c(2,1),], R1, R2, V1, V2))
+
+# all(colnames(RV$R)[-seq(10)] == fs)
+f0 <- structure(seq(length(f0)), names = colnames(RV$R))
+f1 <- c(colnames(RV$R)[1:10], ft)
+f1 <- structure(match(f1, names(f0)), names = f1)
+status_costs <- c(1,0,1,2,0,2,0)
+
+update_cost <- c()
+pbgrad::update_RV(RV, f0 = f0, f1 = f1, f = function(R, W, s){
+	update_cost <<- c(update_cost, ifelse(s==0, 0, status_costs[s]))
+})
+
+```
+
+## Move left crafting
+```{r}
+r1 <- matrix(c(0,1,1,1,1,0,0,0,0), ncol = 3, byrow = FALSE)
+v1 <- matrix(c(1,0,0,1,1,0,1,1,1), ncol = 3, byrow = FALSE)
+r2 <- matrix(0, nrow = 3, ncol = 0)
+v2 <- matrix(0, nrow = 0, ncol = 0)
+move_right(R = list(r1,r2), V = list(v1,v2), i = 1, j = 3) # 2 operations
+
+```
+
+
+
+## Is the combinatorial greedy algorithm optimal in (i - j)?
+```{r}
+
+# all_lcs <- phtools:::all_lcs(seq_along(a), match(b, a))
+# f_lcs <- fs[all_lcs[[2]]]
+# lcs <- all_lcs[[1]]
+# lcs <- phtools:::all_lcs(seq_along(a), match(p, a))
+
+a <- 1:5
+P <- rankr::permn(x = a, m = length(a))
+
+num_crossing <- function(M){ sum(abs(apply(M, 2, diff))) }
+all_ms <- apply(P, 2, function(p){ 
+	lcs <- p[phtools:::longest_subseq(match(p, a))]
+	MS <- move_sequence(setdiff(a, lcs), s = a, t = p, lis = lcs)
+	nc <- sapply(MS, function(x) { ifelse(ncol(x$moves) == 0, NA, num_crossing(x$moves)) })
+	GM <- greedy_min_cross(a, p, lcs = lcs)
+	c(min_nc=min(nc), greedy_nc=num_crossing(GM))
+})
+
+## Conclusion: greedy-step algorithm is good, but not optimal
+idx <- which(apply(all_ms, 2, diff) != 0)
+p <- P[,idx[1]]
+print_lis_sequence(MS[[1]]$moves, s = a, lca = lcs)
+```
+
+
+```{r}
+a <- seq(15)
+b <- sample(a)
+lcs <- b[phtools:::longest_subseq(match(b, a))]
+sapply(setdiff(a, lcs), function(cs){ 
+	move_pair(cs, source = a, target = b, lis = lcs, rule = "all") 
+})
+```
+
+
+plotting sequence of moves 
+```{r}
+plot_moves_pp <- function(M, labels, lcs, ...){
+	N <- seq(length(labels))
+	plot.default(x = NULL, y = NULL, xlim = c(1, ncol(M)+1), ylim = range(N), 
+							 axes = FALSE, xlab = "", ylab = "", asp = c((ncol(M)+1)/length(labels),1), ...)
+	C <- capture_move_sequence(M, s = labels, lcs)
+	for (i in seq(ncol(M))){
+		segments(x0 = i, x1 = i+1, y0 = N, y1 = match(C[[i]]$sequence, C[[i+1]]$sequence))
+	}
+	for (i in seq(ncol(M))){ 
+		points(cbind(i, N), pch = 20, col = ifelse(C[[i]]$sequence %in% C[[i]]$lca, "red", "black")) 
+	}
+	j <- ncol(M)+1
+	points(cbind(j, N), pch = 20, col = ifelse(C[[j]]$sequence %in% C[[j]]$lca, "red", "black"))
+}
+plot_moves_pp(results[[1]]$moves, labels = fs, lca = f_lca)
+
+
+a <- c(7,8,4,3,6,2,1,5,9)
+b <- seq(length(a))
+lcs <- b[phtools:::longest_subseq(match(b, a))]
+
+a <- sample(1:10)
+b <- seq(length(a))
+lcs <- b[phtools:::longest_subseq(match(b, a))]
+
+all_ms <- move_sequence(setdiff(a, lcs), s = a, t = b, lis = lcs)
+
+## Get cost of min cut 
+move_cost <- function(M){ sum(abs(apply(M, 2, diff))) }
+min_cut <- sapply(all_ms, function(x){ move_cost(x$moves) })
+min(min_cut)
+move_cost(greedy_min_cut(a,b,lcs))
+
+
+# greedySchedule <- function(t, d) { 
+# 	d <- sort(d)
+# 	f_prev <- 0 
+# 	n <- lenth(t)
+# 	lateness <- vector("numeric", length = n)
+# 	for (i in seq(length(t))){
+# assign task i to start at s[i] = f_prev // start next task
+# f_prev = f[i] = s[i] + t[i] // its finish time
+# lateness[i] = max(0, f[i] - d[i]) // its lateness
+# }
+# return array s // return array of start times
+# }
+
+plot_moves_pp(all_ms[[which(min_cut == min(min_cut))[1]]]$moves, a, lcs)
+plot_moves_pp(greedy_min_cut(a,b,lcs), a, lcs)
+
+num_conflicts <- function(interval, conflicts){ 
+	stopifnot(length(interval) == 2)
+	interval <- sort(interval)
+	sum(conflicts >= interval[1] & conflicts <= interval[2]) 
+}
+greedy_min_cut <- function(a, b, lcs){
+	symbols <- setdiff(a, lcs)
+	stopifnot(all(c(symbols, lcs) %in% a))
+	moves <- matrix(0, nrow = 2, ncol = 0)
+	while(length(symbols) > 0){
+		M_s <- sapply(symbols, function(cs){ 
+			move_pair(cs, source = a, target = b, lis = lcs, rule = "closest") 
+		})
+		conflicts <- sapply(seq(ncol(M_s)), function(i) num_conflicts(M_s[,i], M_s[1,-i]))
+		mi <- M_s[,which.min(conflicts)]
+		moves <- cbind(moves, mi)
+		lcs <- c(lcs, a[mi[1]])
+		a <- permute_move(a, i = mi[1], j = mi[2])
+		lcs <- lcs[order(match(lcs, a))]
+		symbols <- setdiff(symbols, lcs)
+	}
+	return(unname(moves))
+}
+
+# 		
+# 	
+# 	}
+# 		for (ii in seq(nrow(mi))){
+# 			moves <- cbind(moves, mi[ii,])
+# 			new_s <- permute_move(source, i = mi[ii,1], j = mi[ii,2])
+# 			new_lis <- c(cs, lis)[order(match(c(cs, lis), new_s))]
+# 			move_sequence_recursive(setdiff(symbols, cs), new_s, target, new_lis, vn, new_moves)
+# 		}
+# 	}
+# }
+# all_ms <- move_sequence(setdiff(a, lcs), s = a, t = b, lis = lcs)
+
+move_pair()
+```
+
+
+
+```{r}
+## Evaluating and updating costs of move sequences
+mr_nz <- unname(apply(V1, 1, function(x){ which(x != 0)}))
+for (i in seq(ncol(V1))){
+	mr_nz[[i]] <- setdiff(mr_nz[[i]], i)
+}
+
+get_column_I <- function(R, V, i, j){
+	stopifnot(i > j)
+	I <- seq(j, i-1L) ## absolute 
+	idx <- I[tail(which(V[I, i] != 0), 1L)]
+	indices <- c(i)
+	while(length(idx) != 0){
+		indices <- c(indices, idx)
+		R[,i] <- (R[,idx] + R[,i]) %% 2
+		V[,i] <- (V[,idx] + V[,i]) %% 2
+		idx <- I[tail(which(V[I, i] != 0), 1L)]
+	}
+	return(indices)
+}
+ml_nz <- apply(rbind(seq(1, ncol(V1)), 1), 2, function(x){
+	if (x[1] == x[2]){ return(integer(length = 0))}
+	get_column_I(R = R1, V = V1, i = x[1], j = x[2])
+})
+for (i in seq(ncol(V1))){
+	ml_nz[[i]] <- setdiff(ml_nz[[i]], i)
+}
+
+## Base case: ensure can use precomputed indices to compute cost of first move right
+mr_cost <- function(i, j){ sum(mr_nz[[i]] <= j) }
+mr_cost_truth <- combn(ncol(V1), 2, function(x){
+	move_right(list(R1, R2), V = list(V1, V2), i = x[1], j = x[2])$m
+})
+mr_cost_test <- combn(ncol(V1), 2, function(x){ mr_cost(x[1], x[2]) })
+all(mr_cost_test == mr_cost_truth)
+
+## Base case: ensure can use precomputed indices to compute cost of first move left
+ml_cost <- function(i,j){ 2*sum(ml_nz[[i]] >= j) }
+ml_cost_truth <- combn(ncol(V1), 2, function(x){ 
+	move_left(list(R1, R2), V = list(V1, V2), i = x[2], j = x[1])$m 
+})
+ml_cost_test <- combn(ncol(V1), 2, function(x){ ml_cost(x[2], x[1]) })
+all(ml_cost_test == ml_cost_truth)
+
+
+all_costs_diff <- combn(ncol(V1), 2, function(y){
+	RV1 <- move_right(list(R1, R2), V = list(V1, V2), i = y[1], j = y[2])
+	mr_cost1_truth <- combn(ncol(V1), 2, function(x){
+		move_right(RV1$R, V = RV1$V, i = x[1], j = x[2])$m
+	})
+	return(mr_cost_truth - mr_cost1_truth)
+}, simplify = FALSE)
+
+cost_table <- expand.grid(colnames(R1), colnames(R1))
+cost_table$costs <- apply(cost_table, 1, function(x){ 
+    i <- match(x[1], colnames(R1)) 
+    j <- match(x[2], colnames(R1))
+    ifelse(i == j, 0, ifelse(i < j, mr_cost(i,j), ml_cost(i,j)))
+})
+RV1 <- move_right(list(R1, R2), V = list(V1, V2), i = 1, j = 2)
+
+new_costs <- apply(cost_table[,1:2], 1, function(x){
+	if (x[1] == x[2]){ return(0) }
+	ii <- match(x[1], colnames(RV1$R[[1]]))
+	jj <- match(x[2], colnames(RV1$R[[1]]))
+	if (ii < jj){
+		return(move_right(RV1$R, RV1$V, i = ii, j = jj)$m)
+	} else {
+		return(move_left(RV1$R, RV1$V, i = ii, j = jj)$m)
+	}
+})
+
+
+changed_costs <- combn(ncol(V1), 2)[,mr_cost1_truth != mr_cost_truth]
+apply(changed_costs, 2, function(x){ (x[1] >= 1 & x[1] <= 4) || (x[2] >= 1 & x[2] <= 4)})
+
+update_mr_nz <- function(){
+	V1
+}
+
+## Evaluate the cost of a move sequence
+ms_cost <- function(M, ){
+	
+}
+
+```
+

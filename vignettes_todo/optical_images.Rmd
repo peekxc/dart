@@ -1,0 +1,223 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+# X_50k <- R.matlab::readMat("~/Downloads/n50000Dct.mat")
+x_15_30 <- R.matlab::readMat("~/Downloads/nk15c30Dct.mat")
+# X <- X_50k$n50000Dct
+X <- x_15_30$nk15c30Dct
+
+D <- do.call(rbind, list(
+	c(2 ,-1, 0,-1, 0, 0, 0, 0, 0), 
+	c(-1, 3,-1, 0,-1, 0, 0, 0, 0), 
+	c( 0,-1, 2, 0, 0,-1, 0, 0, 0), 
+	c(-1, 0, 0, 3,-1, 0,-1, 0, 0), 
+	c( 0,-1, 0,-1, 4,-1, 0,-1, 0), 
+	c( 0, 0,-1, 0,-1, 3, 0, 0,-1),
+	c( 0, 0, 0,-1, 0, 0, 2,-1, 0),
+	c( 0, 0, 0, 0,-1, 0,-1, 3,-1),
+	c( 0, 0, 0, 0, 0,-1, 0,-1, 2))
+)
+e1 <- (1/sqrt(6))*matrix(c(1,1,1,0,0,0,-1,-1,-1), ncol = 3)
+e2 <- t(e1)
+e3 <- (1/sqrt(54))*matrix(c(1,1,1,-2,-2,-2,1,1,1), ncol = 3)
+e4 <- t(e3)
+e5 <- (1/sqrt(8))*matrix(c(1,0,-1,0,0,0,-1,0,1), ncol = 3, byrow = TRUE)
+e6 <- (1/sqrt(48))*matrix(c(1,0,-1,-2,0,2,1,0,-1), ncol = 3, byrow = TRUE)
+e7 <- (1/sqrt(48))*matrix(c(1,-2,1,0,0,0,-1,2,-1), ncol = 3, byrow = TRUE)
+e8 <- (1/sqrt(216))*matrix(c(1,-2,1,-2,4,-2,1,-2,1), ncol = 3, byrow = TRUE)
+# e9 <- matrix(c(1,1,1,1,1,1,1,1,1), ncol = 3)
+A <- do.call(cbind, lapply(1:8, function(i) eval(parse(text=sprintf("as.vector(e%d)", i)))))
+# apply(A, 2, function(e){ t(matrix(as.vector(e))) %*% D %*% matrix(as.vector(e)) })
+V <- t(A %*% t(X))
+
+bin_col <- function(x, col_pal, x_rng = range(x)){
+	breaks <- seq(x_rng[1], x_rng[2], length.out = length(col_pal))
+	col_pal[findInterval(x = x, vec = breaks, all.inside = TRUE)]
+}
+normalize <- function(x){ (x - min(x))/(diff(range(x))) }
+
+## Get landmarks 
+d_left <- proxy::dist(X[,1:2], matrix(c(-1,0), ncol = 2))
+lm_idx <- landmark::landmarks_maxmin(X[,1:2], num = 15, seed_index = which.min(d_left))
+
+x_step <- diff(range(X[,1]))*0.05
+y_step <- diff(range(X[,2]))*0.05
+plot(X[,1:2], pch = 20, col = adjustcolor("black", alpha.f = 0.20))
+for (idx in lm_idx){
+	x_pt <- X[idx,1:2][1]
+	y_pt <- X[idx,1:2][2]
+	rasterImage(
+		matrix(normalize(V[idx,]), nrow = 3, byrow = TRUE), 
+		xleft = x_pt-x_step, xright = x_pt+x_step, 
+		ybottom = y_pt-y_step, ytop = y_pt+y_step, 
+		interpolate = FALSE
+	)
+}
+
+
+# lm_idx <- landmark::landmarks_lastfirst(X, num = 15)
+
+# Vd <- function(d){ (pi^(d/2))/(gamma(d/2.0 + 1)) }
+# x_knn <- RANN::nn2(X, k = 15)
+# knn_density <- (15/nrow(X))*(1/(Vd(8)*x_knn$nn.dists[,15]))
+# N <- 25 # number of strata
+# knn_levels <- seq(min(knn_density), max(knn_density), length.out = N)
+# # knn_quantiles <- quantile(knn_density, probs = seq(0, 1, length.out = N))
+# strata_sizes <- sapply(seq(length(knn_levels)-1L), function(i){
+# 	lb <- knn_levels[i]
+# 	ub <- knn_levels[i+1L]
+# 	sum(knn_density >= lb & knn_density <= ub)
+# })
+
+## Do stratified sampling 
+# m <- 500
+# ns <- ceiling((strata_sizes/sum(strata_sizes))*m)+1L
+# strata <- lapply(seq(length(knn_levels)-1L), function(i){
+# 	lb <- knn_levels[i]
+# 	ub <- knn_levels[i+1L]
+# 	idx <- which(knn_density >= lb & knn_density <= ub)
+# 	if (length(idx) == 0){ return(NULL) }
+# 	idx[landmark::landmarks_maxmin(X[idx,,drop=FALSE], num = min(c(length(idx), ns[i])))]
+# })
+plot(X[unlist(strata),1:2])
+
+
+stratified_sample <- function(x, m, f, n.strata=25L){
+	density_levels <- seq(min(f), max(f), length.out = n.strata)
+	strata_sizes <- sapply(seq(n.strata-1L), function(i){
+		lb <- density_levels[i]
+		ub <- density_levels[i+1L]
+		sum(f >= lb & f <= ub)
+	})
+	ns <- ceiling((strata_sizes/sum(strata_sizes))*m)+1L
+	strata <- lapply(seq(length(density_levels)-1L), function(i){
+		lb <- density_levels[i]
+		ub <- density_levels[i+1L]
+		idx <- which(f >= lb & f <= ub)
+		if (length(idx) == 0){ return(NULL) }
+		idx[landmark::landmarks_maxmin(x[idx,,drop=FALSE], num = min(c(length(idx), ns[i])))]
+	})
+	return(unlist(strata))
+}
+
+# saveRDS(X[unlist(strata),], "optical_500.rds")
+# readr::write_csv(as.data.frame(X[unlist(strata),]), path = "optimal_500.csv", col_names = FALSE)
+# points(X[knn_density < 0.0009165355,1:2], col = "purple", pch =20)
+# image(matrix(Y[which.max(X[,2]),], nrow = 3), col = gray.colors(9, start = 0, end = 1))
+```
+
+```{r}
+library("dart")
+#X <- R.matlab::readMat("~/Downloads/nk")$n50000Dct
+X <- R.matlab::readMat("~/Downloads/n50000Dct.mat")$n50000Dct
+X <- R.matlab::readMat("~/Downloads/nk15c30Dct.mat")$nk15c30Dct
+
+## Density estimate
+k <- 300L
+Vd <- function(d){ (pi^(d/2))/(gamma(d/2.0 + 1)) }
+x_knn <- RANN::nn2(X, k = k)
+knn_density <- (k/nrow(X))*(1/(Vd(ncol(X))*x_knn$nn.dists[,k]))
+
+## Stratified maxmin sampling of X
+sample_idx <- stratified_sample(X, m = 500, f = knn_density)
+x <- X[sample_idx,,drop=FALSE]
+f <- normalize(max(knn_density[sample_idx]) - knn_density[sample_idx])
+# f <- normalize(knn_density[sample_idx])
+plot(x, pch = 20, col = bin_col(x = f, col_pal = rainbow(100, start = 0, end = 4/6)))
+# sample_idx <- sample(1:nrow(X), size = 500)
+
+## Get line arrangement + dual graph 
+ro <- bigraded_betti(x = x, f = f, H = 1L, xbin = 15L, ybin = 15L, max_dist = 1.1, save.path = "~/pc_f.txt")
+LA <- dual_line_arrangement(x = ro)
+dg <- t(dual_graph(LA))
+centroids <- do.call(rbind, lapply(LA, sf::st_centroid))
+
+## Plot projection of data 
+plot(x, pch = 20, col = adjustcolor("black", alpha.f = 0.50))
+plot_hilbert(ro, highlight = 1)
+plot(LA, col = "lightgray")
+points(centroids)
+
+R <- simplextree::rips(parallelDist::parallelDist(x), dim = 2, eps = 1.1, filtered = FALSE)
+# S_enc <- straverse(level_order(R), function(simplex){ 
+# 	rankr::rank_comb(matrix(simplex), R$n_simplices[1]) 
+# })
+# S_dim <- rep(seq(R$dimension+1L), times=R$n_simplices)
+
+## recover rips weights + density weight for each simplex
+## TODO: current bottleneck
+S <- R$simplices
+dist_f <- R$weights
+dens_f <- sapply(S, function(x){ max(f[x]) })
+f_simp <- unlist(simplex_to_str(S))
+
+## For each vertex in the dual graph, use point-line duality to get filtration 
+fibers <- cbind(m=centroids[,1], b=-centroids[,2]) ## use duality here
+minimal_bigrades <- structure(cbind(dens_f, dist_f), dimnames = list(f_simp, NULL))
+
+## project onto each of the fibers
+fibered_filtrations <- lapply(seq(nrow(fibers)), function(fi){
+	fiber <- fibers[fi,]
+	proj_pts <- dart:::proj_L(minimal_bigrades, m = fiber[1], b = fiber[2])
+	dist_to_src <- as.vector(proxy::dist(matrix(c(0, fiber[2]), ncol = 2), y = proj_pts))
+	rownames(minimal_bigrades[order(dist_to_src),])
+})
+
+## Get kendall distance weights on dual graph edges
+K_dist <- apply(dg, 1, function(i){
+  kendall_dist(fibered_filtrations[[i[1]]], fibered_filtrations[[i[2]]])
+})
+
+## Get starting point
+e0 <- which(sapply(LA, function(el) { 
+	any(apply(el[[1]], 1, function(pt){ sum(abs(pt - sf::st_bbox(LA)[c(1,4)])) < .Machine$double.eps }))
+}))[1]
+
+G1 <- igraph::graph.empty(n = nrow(centroids), directed = FALSE)
+for (i in seq(nrow(dg))){
+	G1 <- igraph::add_edges(G1, dg[i,], weight = K_dist[i])
+}
+mst_path <- igraph::mst(G1, weights = igraph::E(G1)$weight)
+el <- igraph::as_edgelist(mst_path)
+G2 <- igraph::graph_from_edgelist(rbind(el, el[,2:1]), directed = TRUE)
+vertex_path <- as.vector(unlist(igraph::dfs(G2, root = e0, neimode = "out")$order))
+
+
+plot(LA, col = "gray")
+
+# fiber_path <- lapply(as.vector(arrangement_path), function(fi){
+# 	fiber <- fibers[fi,]
+# 	proj_pts <- proj_L(minimal_bigrades, m = fiber[1], b = fiber[2])
+# 	dist_to_src <- as.vector(proxy::dist(matrix(c(0, fiber[2]), ncol = 2), y = proj_pts))
+# 	rownames(minimal_bigrades[order(dist_to_src),])
+# })
+
+
+## Hilbert function
+plot_hilbert(ro, betti = 1, highlight = 5, show_grid = TRUE)
+
+## Line arrangement
+plot(LA, col = "lightgray", lwd = 0.5)
+for (i in 1:nrow(dg)){ 
+	segments(x0 = centroids[dg[i,1],1], y0 = centroids[dg[i,1],2], 
+					 x1 = centroids[dg[i,2],1], y1 = centroids[dg[i,2],2], 
+					 col = "blue", lwd = 0.5, lty = 3) 
+}
+for (i in seq(length(vertex_path)-1)){
+	arrows(x0 = centroids[i,1], y0 = centroids[i,2], 
+				 x1 = centroids[i+1,1], y1 = centroids[i+1,2], 
+				 col = rainbow(length(vertex_path))[i], lwd = 0.75, length = 0.05)
+}
+```
+
+
+```{r}
+lm_idx <- landmark::landmarks_maxmin(X, num = 150, seed_index = which.min(d_left))
+eps <- max(dbscan:::prims(dist(X[lm_idx,]), n = length(lm_idx))[,3])
+R <- simplextree::rips(dist(X[lm_idx,]), eps = eps, dim = 2)
+plot(R, coords = X[lm_idx,1:2])
+```
+

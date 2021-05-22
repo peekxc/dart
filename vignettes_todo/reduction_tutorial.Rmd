@@ -1,0 +1,66 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+R <- pbgrad::r_geometric_complex(15, radius = 0.25, dim = 2, filtered = TRUE)
+D <- dart::boundary_matrix(R$simplices, dim = c(1,2))
+
+# D <- dart::boundary_matrix(R$simplices)
+# dart:::reduce_rcpp(as.matrix(D$matrix), as.matrix(Matrix::Diagonal(ncol(D$matrix))))
+
+D1 <- as.matrix(D$matrix[[1]])
+V1 <- as.matrix(Matrix::Diagonal(ncol(D$matrix[[1]])))
+D2 <- as.matrix(D$matrix[[2]])
+V2 <- as.matrix(Matrix::Diagonal(ncol(D$matrix[[2]])))
+wut <- dart:::reduce_local_dense(D1, V1, D2, V2)
+
+
+
+rv_arma <- dart:::reduce_arma(D$matrix, Matrix::Diagonal(ncol(D$matrix)))
+
+wut <- dart:::reduce_local_arma(
+	D$matrix[[1]], Matrix::Diagonal(ncol(D$matrix[[1]])), 
+	D$matrix[[2]], Matrix::Diagonal(ncol(D$matrix[[2]]))
+)
+
+D1 <- D$matrix[[1]]
+V1 <- Matrix::Diagonal(ncol(D$matrix[[1]]))
+d2_r <- dart:::reduce_arma(D$matrix[[2]], Matrix::Diagonal(ncol(D$matrix[[2]])))
+
+(D$matrix[[2]] %*% wut$V2) - wut$R2
+(D$matrix[[1]] %*% wut$V1) - wut$R1
+
+pivots <- apply(d2_r$R, 2, dart:::low_entry)
+P <- cbind(i = pivots, j = seq(ncol(d2_r$R)))
+P <- P[P[,1] != 0,]
+
+D1[,P[,1]] <- 0
+
+V1[,P[,1]] d2_r$R[,P[,2]]
+
+D1_psp <- dart::psp_matrix(x = D$matrix[[1]])
+V1_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix[[1]])))
+D2_psp <- dart::psp_matrix(x = D$matrix[[2]])
+V2_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix[[2]])))
+
+dart:::reduce_local_pspbool(
+	D1s = D1_psp$matrix$as_XPtr(), V1s = V1_psp$matrix$as_XPtr(), 
+	D2s = D2_psp$matrix$as_XPtr(), V2s = V2_psp$matrix$as_XPtr(), 
+	clearing = TRUE
+)
+all((D$matrix[[2]] %*% V2_psp$as.Matrix() %% 2) == D2_psp$as.Matrix())
+all((D$matrix[[1]] %*% V1_psp$as.Matrix() %% 2) == D1_psp$as.Matrix())
+
+R <- pbgrad::r_geometric_complex(6, radius = 0.25, dim = 2, filtered = TRUE)
+D <- dart::boundary_matrix(R$simplices)
+D_psp <- dart::psp_matrix(x = D$matrix)
+V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix)))
+dart:::reduce_pspbool(D_psp$matrix$as_XPtr(), V_psp$matrix$as_XPtr())
+
+R <- pbgrad::r_geometric_complex(6, radius = 0.25, dim = 2, filtered = TRUE)
+D <- dart::boundary_matrix(R$simplices)
+rv <- dart::reduce(D)
+```

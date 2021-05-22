@@ -1,0 +1,156 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+flare1 <- tiff::readTIFF("~/Downloads/Sept2017_X8Flare_171A_stand.HD1080i.00001.tif")
+flare1_gs <- array(0.30*flare1[,,1] + 0.59*flare1[,,2] + 0.11*flare1[,,3], dim = dim(flare1)[1:2])
+
+dgm <- ripserr::cubical(flare1_gs)
+
+boundingbox::boxer(names = "~/Downloads/flare1.gif")
+## Need to get bounding box of non-zero entries around sun
+
+
+library(magick)
+flare_m <- magick::image_read(path = "~/Downloads/Sept2017_X8Flare_171A_stand.HD1080i.00001.tif")
+magick::image_write(flare_m, path = "~/Downloads/flare1.gif", format = "gif")
+magick::image_write(flare_m, path = "~/Downloads/flare1.png", format = "png")
+
+# boundingbox::boxer(names = "~/Downloads/flare1.gif", )
+```
+
+```{r}
+flare1 <- tiff::readTIFF("~/Downloads/flare1_4k.tif")
+flare1_gs <- array(0.30*flare1[,,1] + 0.59*flare1[,,2] + 0.11*flare1[,,3], dim = dim(flare1)[1:2])
+f1_ds <- OpenImageR::down_sample_image(flare1_gs, factor = 40)
+dgm <- ripserr::cubical(f1_ds)
+# wut <- ripserr:::cubical_2dim(f1_ds, threshold = 9999, method = 0)
+
+
+plot(as.raster(f1_ds))
+dim(f1_ds)
+ ripserr::cubical(f1_ds)
+ 
+ 
+M <- matrix(rnorm(25), ncol = 5, nrow = 5)
+
+## Given an image of 2D 
+image_complex <- function(M, eps = max(M)){
+	
+	library(Matrix)
+	
+	nv <- prod(dim(M))
+	v_ranks <- seq(nv)
+	vertex_pos <- rankr::unrank_grid(seq(v_ranks), dims = dim(M))
+	
+	u <- rbind(vertex_pos[1,], vertex_pos[2,]+1)
+	r <- rbind(vertex_pos[1,]+1, vertex_pos[2,])
+	
+	## Compute triangles
+	invalid <- function(x){ any((x < 1) | x > dim(M)) }
+	valid <- !apply(u, 2, invalid) & !apply(r, 2, invalid)
+	vu <- rankr::rank_grid(u[,valid,drop=FALSE], dims = dim(M))
+	vr <- rankr::rank_grid(r[,valid,drop=FALSE], dims = dim(M))
+	tri <- rbind(seq(nv)[valid], vu, vr)
+	
+	st <- simplex_tree(matrix(seq(nv), nrow = 1)) %>% insert(tri)
+	simplices <- ltraverse(level_order(st), identity)
+	
+	v_w <- M[t(vertex_pos)]
+	e_w <- apply(st$edges, 1, function(idx) max(v_w[idx]))
+	t_w <- apply(st$triangles, 1, function(idx) max(v_w[idx]))
+	s_w <- c(v_w, e_w, t_w)
+	
+	lo <- lex_order(simplices, s_w)+1L
+	io <- Matrix::invPerm(lo)
+	# v_c <- rankr::rank_comb(x = st$vertices, n = st$n_simplices[1])
+	# e_c <- rankr::rank_comb(x = t(st$edges), n = st$n_simplices[1])
+	# t_c <- rankr::rank_comb(x = t(st$triangles), n = st$n_simplices[1])
+	# s_c <- c(v_c, e_c, t_c)
+	# dim <- rep(seq(st$dimension+1), times = st$n_simplices)-1L
+	# lex_order_idx <- pbgrad:::lex_order(weights = s_w, dim = dim, combinadics = s_c, n = nv)
+	
+	
+	f_w <- s_w[lo]
+	f_s <- simplices[lo]
+	D <- pbgrad::boundary_matrix(st)
+	idx <- match(colnames(D), unlist(simplex_to_str(simplices)))
+	return(D[idx,idx])
+}
+f1_ds <- OpenImageR::down_sample_image(flare1_gs, factor = 80)
+D <- image_complex(f1_ds)
+RV <- pbgrad::reduce(D, show_progress = TRUE)
+
+
+
+```
+
+```{r}
+p1 <- "~/Downloads/STEREOAEUVI304A_stand.HD1080i.00002.tif"
+p2 <- "~/Downloads/STEREOAEUVI304A_stand.HD1080i.00198.tif"
+f1 <- tiff::readTIFF(p1)
+f1_gs <- array(0.30*f1[,,1] + 0.59*f1[,,2] + 0.11*f1[,,3], dim = dim(f1)[1:2])
+# bbox <- .Last.value
+# y_rng <- floor(bbox$x)[1]:ceiling(bbox$x[2])
+# x_rng <- floor(bbox$y)[1]:ceiling(bbox$y[2])
+f1_gs[x_rng, y_rng]
+f1_ds <- OpenImageR::down_sample_image(flare1_gs, factor = 40)
+
+dgm <- ripserr::cubical(f1_gs[x_rng, y_rng])
+pbgrad::plot_dgm(as.matrix(dgm))
+```
+
+```{r}
+t1 <- jsonlite::read_json("~/Downloads/OpenNeuro/sub-pixar002/anat/sub-pixar002_T1w.json")
+xyz <- do.call(rbind, lapply(t1$global$slices$CsaImage.SlicePosition_PCS, unlist))
+t1 <- jsonlite::read_json("~/Downloads/OpenNeuro/sub-pixar002/func/sub-pixar002_task-pixar_bold.json")
+```
+```{r}
+nii <- neurobase::readnii("~/Downloads/sub-pixar110_anat_sub-pixar110_T1w.nii.gz")
+nii <- neurobase::readnii("~/Downloads/sub-pixar110_func_sub-pixar110_task-pixar_bold.nii.gz")
+plot(as.raster(nii@.Data[51,,]/max(nii@.Data[51,,])))
+
+nii@.Data[,,1,1]
+
+dim(nii@.Data[,,,1])
+results <- vector(mode = "list", length = dim(nii@.Data)[4])
+for (i in seq(dim(nii@.Data)[4])){
+	dgm <- ripserr::cubical(nii@.Data[,,,i])
+	results[[i]] <- dgm
+	print(i)
+}
+
+animation::saveGIF({
+	for (i in seq(dim(nii@.Data)[4])){
+		pbgrad::plot_dgm(as.matrix(results[[i]]), dim = c(1), col = adjustcolor("red", alpha.f = 0.35), pch = 20)
+	}
+}, movie.name = "brain_dgms1.gif", interval = 0.05)
+
+animation::saveGIF({
+	for (i in seq(dim(nii@.Data)[4])){
+		pbgrad::plot_dgm(as.matrix(results[[i]]), dim = c(0), 
+										 col = adjustcolor("black", alpha.f = 0.35), pch = 20)
+	}
+}, movie.name = "brain_dgms0.gif", interval = 0.05)
+
+animation::saveGIF({
+	for (i in seq(dim(nii@.Data)[4])){
+		pbgrad::plot_dgm(as.matrix(results[[i]]), dim = c(2), 
+										 col = adjustcolor("green", alpha.f = 0.35), pch = 20)
+	}
+}, movie.name = "brain_dgms2.gif", interval = 0.05)
+
+animation::saveGIF({
+	for (i in seq(300)){
+		plot(as.raster(sf[,,i]/max(sf[,,i])))
+	}
+}, movie.name = "solare_flare.gif", interval = 0.05)
+
+
+
+dgm_rips <- ripserr::vietoris_rips(nii@.Data[,,,1])
+nii@.Data[,,,1]
+```
+

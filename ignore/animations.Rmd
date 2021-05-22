@@ -1,0 +1,966 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+library(phtools)
+B <- pbgrad::dms_example(22, "boids")$generator
+
+K0 <- simplextree::rips(B(0.10)$dX, dim = 2L, eps = 0.35, filtered = TRUE)
+K1 <- simplextree::rips(B(0.12)$dX, dim = 2L, eps = 0.35, filtered = TRUE)
+
+plot(K0, coords = B(0.10)$X)
+plot(K1, coords = B(0.12)$X)
+
+D <- pbgrad::boundary_matrix(K0)
+RV <- pbgrad::reduce(D)
+
+# K0_simplices <- unlist(simplex_to_str(K0$simplices))
+# K1_simplices <- unlist(simplex_to_str(K1$simplices))
+# f0 <- structure(seq(sum(K0$n_simplices)), names = K0_simplices)
+# f1 <- structure(seq(sum(K1$n_simplices)), names = K1_simplices)
+# pbgrad::update_RV(RV, f0, f1)
+
+ds <- sapply(K0$simplices, length)
+R1 <- RV$R[ds == 1, ds == 2]
+V1 <- RV$V[ds == 2, ds == 2]
+R2 <- RV$R[ds == 2, ds == 3]
+V2 <- RV$V[ds == 3, ds == 3]
+D1 <- D[ds == 1, ds == 2]
+D2 <- D[ds == 2, ds == 3]
+
+## "(1,10)" "(4,7)"  "(4,6)"  "(7,11)" "(3,6)"  "(3,4)"  "(6,7)"  "(6,9)"  "(5,6)"  "(3,10)" "(5,9)"  "(1,3)" ## "(4,11)" "(3,7)"  "(2,12)" "(3,9)"  "(2,11)" "(4,5)"  "(6,11)" "(5,7)" 
+
+## "(5,9)"  "(3,7)"  "(3,10)" "(1,3)"  "(5,7)"  "(6,11)" "(6,7)"  "(5,6)"  "(3,6)"  "(3,9)"  "(4,7)"  "(4,5)" ## "(2,11)" "(2,12)" "(4,11)" "(6,9)"  "(7,11)" "(4,6)"  "(1,10)" "(3,4)" 
+
+
+set.seed(1234)
+results <- vector("list", length = 1250)
+for (j in seq(length(results))){
+	
+	K0_simplices <- unlist(simplex_to_str(Filter(function(s) length(s) == 2, K0$simplices)))
+	K1_simplices <- sample_filtration(K0_simplices)
+	
+	f0 <- structure(seq(length(K0_simplices)), names = K0_simplices)
+	f1 <- structure(seq(length(K1_simplices)), names = K1_simplices)
+	
+	m <- length(K0_simplices)
+	P <- seq(m)
+	Q <- match(K1_simplices, K0_simplices)
+	
+	lcs <- Q[phtools:::longest_subseq(match(Q, P))]
+	min_schedule <- greedy_min_cross(a = P, b = Q, lcs = lcs, opt = "minimize")
+	max_schedule <- greedy_min_cross(a = P, b = Q, lcs = lcs, opt = "maximize")
+	status_costs <- c(2,2,0,1,2,0,2,0,1)
+	
+	S <- refine_schedule(min_schedule)
+	n_ops <- vector("integer", length = ncol(S))
+	updated_RV <- simulate_vineyard_local(
+		R1 = R1, V1 = V1, R2 = R2, V2 = V2, S = S, D1 = D1, D2 = D2, 
+		f = function(R1n, R2n, V1n, V2n, D1n, D2n, s, ti){
+		n_ops[ti] <<- status_costs[s]
+	})
+	S <- refine_schedule(max_schedule)
+	n_ops2 <- vector("integer", length = ncol(S))
+	updated_RV <- simulate_vineyard_local(
+		R1 = R1, V1 = V1, R2 = R2, V2 = V2, S = S, D1 = D1, D2 = D2, 
+		f = function(R1n, R2n, V1n, V2n, D1n, D2n, s, ti){
+		n_ops2[ti] <<- status_costs[s]
+	})
+	## S <- insertion_sort(Q)
+	results[[j]] <- list(ops=cbind(sum(n_ops), sum(n_ops2)), P, Q)
+	print(j)
+}
+
+sapply(results, function(x) diff(x$ops[1,]))
+
+S <- refine_schedule(min_schedule)
+n_ops <- vector("integer", length = ncol(S))
+updated_RV <- simulate_vineyard(R = RV$R, V = RV$V, D = D, S = S, f = function(Rn, Vn, Dn, s, ti){
+	n_ops[ti] <<- status_costs[s]
+})
+sum(n_ops)
+
+S <- refine_schedule(max_schedule)
+n_ops2 <- vector("integer", length = ncol(S))
+updated_RV <- simulate_vineyard(R = RV$R, V = RV$V, D = D, S = S, f = function(Rn, Vn, Dn, s, ti){
+	n_ops2[ti] <<- status_costs[s]
+})
+sum(n_ops2)
+
+## Given two permutations 'p' and 'q' and a set of m indices to transpose between then, this 
+## function returns a (2 x m) matrix of relative positions which successively describe the 
+## positions of the elements to transpose in transforming p -> q
+generate_schedule <- function(p, q, transpositions, check=TRUE){
+	stopifnot(ncol(transpositions) == 2, is.matrix(transpositions), all(p %in% q))
+	stopifnot(all(as.vector(transpositions[,1:2]) %in% p))
+	S <- matrix(0L, ncol = 0, nrow = 2)
+	for (i in seq(nrow(transpositions))){
+		tr_idx <- match(transpositions[i,], p)
+		stopifnot(abs(diff(tr_idx)) == 1)
+		S <- cbind(S, tr_idx)
+		p <- permute_move(p, i = tr_idx[1], j = tr_idx[2])
+	}
+	if (check){ stopifnot(all(p == q)) }
+	return(unname(S))
+}
+
+ds <- sapply(str_to_simplex(colnames(RV$R)), length)
+R1 <- RV$R[ds == 1, ds == 2]
+V1 <- RV$V[ds == 2, ds == 2]
+R2 <- RV$R[ds == 2, ds == 3]
+V2 <- RV$V[ds == 3, ds == 3]
+D1 <- D[ds == 1, ds == 2]
+D2 <- D[ds == 2, ds == 3]
+
+K0_simplices <- unlist(simplex_to_str(Filter(function(s) length(s) == 2, K0$simplices)))
+K1_simplices <- sample_filtration(K0_simplices)
+
+m <- length(K0_simplices)
+P <- seq(m)
+Q <- match(K1_simplices, K0_simplices)
+
+set.seed(1234)
+results <- vector("list", length = 250)
+for (jj in seq(length(results))){
+	## Generate different orderings 
+	xy0 <- cbind(0, sort(runif(m)))
+	xy1 <- cbind(1, sort(runif(m)))
+	xy1 <- xy1[Matrix::invPerm(Q),]
+	
+	lines <- lapply(seq(nrow(xy0)), function(i){ sf::st_linestring(rbind(xy0[i,], xy1[i,])) })
+	
+	pairs <- combn(length(P), 2)
+	crossings <- apply(pairs, 2, function(x){
+		pt <- unclass(sf::st_intersection(lines[[x[1]]], lines[[x[2]]]))
+		if (length(pt) == 0){ return(NULL) }
+		return(matrix(c(x, pt), nrow = 1))
+	})
+	crossings <- do.call(rbind, crossings)
+	crossings <- crossings[order(crossings[,3]),]
+
+	S <- generate_schedule(P, Q, crossings[,1:2])
+
+	n_ops <- vector("integer", length = ncol(S))
+	status_costs <- c(2,2,0,1,2,0,2,0,1)
+	updated_RV <- simulate_vineyard_local(
+		R1 = R1, V1 = V1, R2 = R2, V2 = V2, S = S, D1 = D1, D2 = D2, 
+		f = function(R1n, R2n, V1n, V2n, D1n, D2n, s, ti){
+		n_ops[ti] <<- status_costs[s]
+	})
+	print(sum(n_ops))
+	# updated_RV <- simulate_vineyard(R = RV$R, V = RV$V, D = D, S = S, f = function(Rn, Vn, Dn, s, ti){
+	# 	n_ops[ti] <<- status_costs[s]
+	# })
+	
+	results[[jj]]	<- list(n_ops=n_ops, xy0=xy0, xy1=xy1)
+	print(jj)
+}
+
+refine_schedule <- function(S){
+	new_S <- matrix(0, ncol = 0, nrow = 2)
+	for (i in seq(ncol(S))){
+		m_ij <- S[,i]
+		if (m_ij[1] < m_ij[2]){
+			new_S <- cbind(new_S, rbind(seq(m_ij[1], m_ij[2]-1), seq(m_ij[1]+1,m_ij[2])))
+		} else {
+			new_S <- cbind(new_S, rbind(seq(m_ij[1], m_ij[2]+1), seq(m_ij[1]-1, m_ij[2])))
+		}
+	}
+	return(new_S)
+}
+lcs <- Q[phtools:::longest_subseq(match(Q, P))]
+opt_schedule <- greedy_min_cross(a = P, b = Q, lcs = lcs)
+opt_schedule <- greedy_min_cross(a = P, b = Q, lcs = lcs, opt = "maximize")
+
+p <- P
+for (j in seq(ncol(opt_schedule))){
+	p <- permute_move(p, i = opt_schedule[1,j], j = opt_schedule[2,j])
+}
+all(p == Q)
+
+p <- P
+S <- refine_schedule(opt_schedule)
+for (j in seq(ncol(S))){
+	p <- permute_move(p, i = S[1,j], j = S[2,j])
+}
+all(p == Q)
+
+
+range(sapply(results, function(x){ sum(x$n_ops) }))
+
+n_ops <- vector("integer", length = ncol(S))
+status_costs <- c(2,2,0,1,2,0,2,0,1)
+updated_RV <- simulate_vineyard(R = RV$R, V = RV$V, D = D, S = S, f = function(Rn, Vn, Dn, s, ti){
+	n_ops[ti] <<- status_costs[s]
+})
+
+## Make two homotopies with fixed filtrations that have dramatically different update costs 
+P <- unlist(simplex_to_str(K0$simplices))
+Q <- unlist(simplex_to_str(K1$simplices))
+extra_P <- setdiff(Q, P)
+extra_Q <- setdiff(P, Q)
+P <- c(P, extra_P)
+Q <- c(Q, extra_Q)
+
+## generates n points randomly about a segment (x0,y0) - (x1, y1) by sampling 
+## points some percentage of the lines distance about its normal
+points_around_line <- function(pt1, pt2, n, percentage){
+	v <- (pt2 - pt1)
+	u <- v / norm(matrix(v, ncol = 2), "F")
+	up <- -c(u[2], -u[1])
+	alpha <- runif(n)
+	pts_along_line <- matrix(pt1 + rep(alpha, each = 2)*v, ncol = 2, byrow = TRUE)
+	signs <- sample(x = c(TRUE, FALSE), size = n, replace = TRUE)
+	line_dist <- norm(matrix(rbind(pt1, pt2), ncol = 2), "F")
+	r <- line_dist*percentage
+	out <- as.vector(t(pts_along_line) + rep(ifelse(signs, r*up, -r*up), each = 2))
+	return(matrix(out, ncol = 2, byrow = TRUE))
+}
+
+
+generate_homotopy <- function(p, q, f0=NULL, f1=NULL, ...){
+	stopifnot(length(p) == length(q))
+	if (missing(f0)){ f0 <- seq(length(p))/length(p) }
+	if (missing(f1)){ f1 <- match(p, q)/(length(p)) }
+	xy0 <- cbind(0, f0)
+	xy1 <- cbind(1, f1)
+	segments_lst <- lapply(seq(nrow(xy1)), function(i){
+		pt1 <- xy0[i,]
+		pt2 <- xy1[i,]
+		s1 <- points_around_line(pt1, pt2, ...)
+		to_keep <- (s1[,1] > pt1[1]) & (s1[,1] < pt2[1])
+		s1 <- s1[to_keep,,drop=FALSE]
+		s1 <- s1[order(s1[,1]),,drop=FALSE]
+		s1 <- do.call(rbind, list(pt1, s1, pt2))
+		return(s1)
+	})
+	lines <- lapply(segments_lst, function(s){ sf::st_linestring(s, dim = 2) })
+	return(lines)
+}
+
+pl_lines <- generate_homotopy(P, Q, n = 16, percentage = 0.015)
+smoothed_lines <- lapply(pl_lines, smoothr::smooth)
+
+# plot(sf::st_multilinestring(pl_lines))
+plot(sf::st_multilinestring(smoothed_lines))
+
+cc <- combn(length(P), 2)
+crossings <- apply(cc, 2, function(x){
+	sf::st_intersection(smoothed_lines[[x[1]]], smoothed_lines[[x[2]]])
+})
+for (i in seq(ncol(cc))){
+	if (!sf::st_is_empty(crossings[[i]])){
+		xy <- matrix(unclass(crossings[[i]]), ncol = 2)
+		crossings[[i]] <- cbind(t(replicate(nrow(xy), cc[,i])), xy)
+	} else {
+		crossings[[i]] <- matrix(0, ncol = 0, nrow = 0)
+	}
+}
+cross_matrix <- do.call(rbind, Filter(function(x){ nrow(x) > 0 }, crossings))
+cross_matrix <- cross_matrix[order(cross_matrix[,3]),]
+
+```
+
+
+## Triangle exmaple vineyards 
+```{r}
+st <- simplextree::simplex_tree(combn(3,2))
+D <- permute_move(pbgrad::boundary_matrix(st), i = 4, j = 6)
+RV <- pbgrad::reduce(D)
+R1 <- RV$R[1:3,4:6]
+R2 <- RV$R[4:6,0]
+V1 <- RV$V[4:6, 4:6]
+V2 <- RV$V[0,0]
+S <- matrix(c(1,2,2,3), nrow = 2, byrow = FALSE)
+simulate_vineyard_local(R1 = R1, V1 = V1, R2 = R2, V2 = V2, S = S, f = function(R1n, R2n, V1n, V2n, s, ti){
+	print(s)
+})
+status_costs[c(5,7)]
+move_right(list(R1,R2), list(V1,V2), 1, 3)
+```
+
+## Boid simulation homotopy 
+
+```{r}
+library(phtools)
+B <- pbgrad::dms_example(16, "boids")$generator
+
+tau0 <- 0.10
+tau1 <- 0.12
+d0 <- B(tau0)$dX
+d1 <- B(tau1)$dX
+
+K0 <- simplextree::rips(d0, dim = 2L, eps = 0.15, filtered = TRUE)
+K1 <- simplextree::rips(d1, dim = 2L, eps = 0.15, filtered = TRUE)
+
+filter_nonedges <- function(x) { Filter(function(e) length(e) == 2, x) }
+simplex_to_character <- function(x) { unlist(simplex_to_str(x)) } 
+character_to_simplex <- function(x) { str_to_simplex(x, simplify=FALSE) } 
+			 
+K0_simplices <- simplex_to_character(filter_nonedges(K0$simplices))
+K1_simplices <- simplex_to_character(filter_nonedges(K1$simplices))
+K0_extra <- simplex_to_character(filter_nonedges(character_to_simplex(setdiff(K1_simplices, K0_simplices))))
+K1_extra <- simplex_to_character(filter_nonedges(character_to_simplex(setdiff(K0_simplices, K1_simplices))))
+
+C0 <- unname(c(K0_simplices, K0_extra))
+dx0 <- B(tau0)$dX
+dx1 <- B(tau1)$dX
+K0_extra_sorted <- K0_extra[order(as.matrix(dx0)[t(do.call(cbind, character_to_simplex(K0_extra)))])]
+K1_extra_sorted <- K1_extra[order(as.matrix(dx1)[t(do.call(cbind, character_to_simplex(K1_extra)))])]
+C0 <- unname(c(K0_simplices, K0_extra_sorted))
+C1 <- unname(c(K1_simplices, K1_extra_sorted))
+CL <- simplex_to_character(t(kdtools::lex_sort(do.call(rbind, character_to_simplex(C0)))))
+
+## Check They are in the correct order
+all(order(as.matrix(dx0)[do.call(rbind, character_to_simplex(C0))]) == seq(length(C0)))
+all(order(as.matrix(dx1)[do.call(rbind, character_to_simplex(C1))]) == seq(length(C1)))
+
+simplices <- do.call(cbind, character_to_simplex(C0))
+# si_idx <- rankr::rank_comb(simplices, n = K0$n_simplices[1])
+time_params <- seq(tau0, tau1, length.out = 100L)
+time_norm <- (time_params - min(time_params))/sum(abs(diff(time_params)))
+ft <- do.call(cbind, lapply(time_params, function(ti){ as.matrix(B(ti)$dX)[t(simplices)] }))
+ftn <- (ft - min(ft))/(sum(abs(diff(range(ft)))))
+
+sf_segms <- lapply(seq(nrow(ft)), function(i){ 
+	sf::st_linestring(rbind(c(0, ft[i,1]), c(1, ft[i,ncol(ft)]))) 
+})
+sf_lines <- lapply(1:nrow(ftn), function(i){ sf::st_linestring(cbind(time_norm, ftn[i,])) })
+sf_mlines <- sf::st_multilinestring(sf_lines)
+sf_slines <- lapply(sf_lines, smoothr::smooth)
+
+## Make the schedule
+pairs <- combn(length(sf_segms), 2)
+crossings <- apply(pairs, 2, function(x){
+	pt <- unclass(sf::st_intersection(sf_segms[[x[1]]], sf_segms[[x[2]]]))
+	# if (length(pt) > 5){ return(NULL)}
+	if (length(pt) == 0){ return(NULL) }
+	pt <- matrix(pt, ncol = 2)
+	return(cbind(t(replicate(nrow(pt),x)), pt))
+})
+crossings <- do.call(rbind, crossings)
+crossings <- crossings[order(crossings[,3]),]
+crossings <- crossings[!(crossings[,3] %in% c(0.0, 1.0)),]
+
+P <- seq(length(C0))
+Q <- match(C1, C0)
+S <- generate_schedule(P, Q, crossings[,1:2], check = TRUE)
+
+# p <- P
+# for (i in seq(ncol(S))){ p <- permute_move(p, S[1,i], S[2,i]) }
+
+## Full reduction 
+K0
+# bm <- matrix(0, nrow = length(K0$vertices), ncol = length(C0))
+
+
+
+
+## Get dgm's 
+D <- pbgrad::boundary_matrix(K0)
+RV <- pbgrad::reduce(D)
+
+R1 <- match(C0, colnames(RV$R))
+
+n_ops <- vector("integer", length = ncol(S))
+status_costs <- c(2,2,0,1,2,0,2,0,1)
+updated_RV <- simulate_vineyard_local(
+	R1 = R1, V1 = V1, R2 = R2, V2 = V2, S = S, D1 = D1, D2 = D2, 
+	f = function(R1n, R2n, V1n, V2n, D1n, D2n, s, ti){
+	pbgrad::extract_pairs()
+})
+
+
+simulate_vineyard(R = RV$R, )
+
+for (i in seq(length(time_norm))){
+	## Draw all three plots 
+	plot(sf_mlines, lty = 1, lwd = 1, col = 2, pch = 1, type = "l")
+	
+	## 
+	RP <- simplextree::rips(B(tau0)$dX, dim = 2L, eps = 0.15, filtered = TRUE)
+	plot(RP, coords = B(tau0)$X, asp = 1)
+	box()
+	
+	pbgrad::plot_dgm()
+}
+	
+
+```
+
+## Full filtration crossing example 
+```{r}
+library(phtools)
+B <- pbgrad::dms_example(7, "boids")$generator
+
+tau0 <- 0.10
+tau1 <- 0.12
+K0 <- simplextree::rips(B(tau0)$dX, dim = 2L, eps = 0.15, filtered = TRUE)
+K1 <- simplextree::rips(B(tau1)$dX, dim = 2L, eps = 0.15, filtered = TRUE)
+
+x2c <- function(x) { unlist(simplex_to_str(x)) } 
+c2x <- function(x) { str_to_simplex(x, simplify=FALSE) } 
+			 
+K0_simplices <- x2c(K0$simplices)
+K1_simplices <- x2c(K1$simplices)
+K0_extra <- setdiff(K1_simplices, K0_simplices) ## To insert 
+K1_extra <- setdiff(K0_simplices, K1_simplices) ## To delete 
+
+## Recorrect filtration order 
+weights <- function(simplices, dx){
+	dx <- as.matrix(dx)
+	sapply(simplices, function(x){ ifelse(length(x) == 1, 0, max(combn(x,2,function(p){ dx[p[1], p[2]] }))) })
+}
+
+dx0 <- B(tau0)$dX
+C0 <- unname(c(K0_simplices, K0_extra))
+f0_weights <- weights(c2x(C0), dx0)
+c0_simplices <- c2x(C0)
+ds <- sapply(c0_simplices, length)
+cc <- vector("integer", length=length(ds))
+cc[ds==1] <- rankr::rank_comb(do.call(cbind, c0_simplices[ds == 1]), n = K0$n_simplices[1])
+cc[ds==2] <- rankr::rank_comb(do.call(cbind, c0_simplices[ds == 2]), n = K0$n_simplices[1])
+cc[ds==3] <- rankr::rank_comb(do.call(cbind, c0_simplices[ds == 3]), n = K0$n_simplices[1])
+wlex_order <- pbgrad:::lex_order(weights=f0_weights, dim=ds-1, combinadics=cc-1L, n=K0$n_simplices[1])+1L
+f_c0 <- impose_total_order(f0_weights[wlex_order], sqrt(10*.Machine$double.eps))
+C0 <- C0[wlex_order]
+
+dx1 <- B(tau1)$dX
+C1 <- unname(c(K1_simplices, K1_extra))
+f1_weights <- weights(c2x(C1), dx1)
+c1_simplices <- c2x(C1)
+ds <- sapply(c1_simplices, length)
+cc <- vector("integer", length=length(ds))
+cc[ds==1] <- rankr::rank_comb(do.call(cbind, c1_simplices[ds == 1]), n = K0$n_simplices[1])
+cc[ds==2] <- rankr::rank_comb(do.call(cbind, c1_simplices[ds == 2]), n = K0$n_simplices[1])
+cc[ds==3] <- rankr::rank_comb(do.call(cbind, c1_simplices[ds == 3]), n = K0$n_simplices[1])
+wlex_order <- pbgrad:::lex_order(weights=f1_weights, dim=ds-1, combinadics=cc-1L, n=K0$n_simplices[1])+1L
+# wlex_order <- Matrix::invPerm(wlex_order)
+f1_w <- impose_total_order(f1_weights[wlex_order], sqrt(10*.Machine$double.eps))
+f_c1 <- f1_w[match(C0, names(f1_w))]
+C1 <- names(f1_w)
+# f_c1 <- f1_weights[wlex_order]
+# C1 <- C1[wlex_order]
+# f_c1 <- f1_weights[match(C0, C1)] # all(names(f_c1) == C0)
+# C1 <- C1[match(C0, C1)]
+
+## (1,4) and (1,6)
+## (1,4) and (3,5)
+impose_total_order <- function(w, eps=.Machine$double.eps){
+	noise <- unlist(sapply(rle(w)$lengths, function(ti){ c(0, rep(eps, ti-1)) }))
+	return(w+cumsum(noise))
+}
+	
+time_params <- seq(tau0, tau1, length.out = 100L)
+time_norm <- (time_params - min(time_params))/sum(abs(diff(time_params)))
+
+# non_identical_idx <- which(f_c0 != f_c1)
+# sf_segms <- lapply(seq(length(non_identical_idx)), function(i){ 
+	# sf::st_linestring(rbind(c(0, f_c0[non_identical_idx[i]]), c(1, f_c1[non_identical_idx[i]]))) 
+# })
+sf_segms <- lapply(seq(length(C0)), function(i){ 	
+	sf::st_linestring(rbind(c(0, f_c0[i]), c(1, f_c1[i]))) 
+})
+# sf_lines <- lapply(1:nrow(ftn), function(i){ sf::st_linestring(cbind(time_norm, ftn[i,])) })
+# sf_mlines <- sf::st_multilinestring(sf_lines)
+# sf_slines <- lapply(sf_lines, smoothr::smooth)
+
+## Make the schedule
+pairs <- combn(length(sf_segms), 2)
+crossings <- apply(pairs, 2, function(x){
+	pt <- unclass(sf::st_intersection(sf_segms[[x[1]]], sf_segms[[x[2]]]))
+	# if (length(pt) > 5){ return(NULL)}
+	if (length(pt) == 0){ return(NULL) }
+	pt <- matrix(pt, ncol = 2)
+	return(cbind(t(replicate(nrow(pt),x)), pt))
+})
+crossings <- do.call(rbind, crossings)
+crossings <- crossings[order(crossings[,3]),]
+# crossings <- crossings[!(crossings[,3] %in% c(0.0, 1.0)),]
+# crossings[,1:2] <- matrix(non_identical_idx[as.vector(crossings[,1:2])], ncol = 2)
+
+# plot(sf::st_multilinestring(sf_segms))
+# draw_segments <- functio(){}
+# plot.default(NULL, NULL, xlim = c(0, 1), ylim = c(-0.01, max(c(f1_w, f_c0))))
+# segments(x0 = 0, )
+# p <- P
+# tr <- crossings[,1:2]
+# weights <- crossings[,3]
+# # w_rle <- rle(crossings[,3])
+# S <- matrix(0L, ncol = 0, nrow = 2)
+# for (i in seq(length(tr))){
+# 	tr_idx <- match(tr[i,], p)
+# 	if (abs(diff(tr_idx)) != 1){
+# 		potential_idx <- which(weights == weights[i])
+# 		for (j in potential_idx){
+# 			if (abs(diff(match(tr[j,], p))) == 1){
+# 				tr[i,] <- tr[j,]
+# 				tr[j,] <- tr_idx
+# 				break
+# 			}
+# 		}
+# 	}
+# 	tr_idx <- match(tr[i,], p)
+# 	if (abs(diff(tr_idx)) != 1){ stop("invalid ordering") }
+# 	S <- cbind(S, tr_idx)
+# 	p <- permute_move(p, i = tr_idx[1], j = tr_idx[2])
+# }
+
+P <- seq(length(C0))
+Q <- match(C1, C0)
+S <- generate_schedule(P, Q, crossings[,1:2], check = TRUE)
+p <- P
+for (i in seq(ncol(S))){ p <- permute_move(p, S[1,i], S[2,i]) }
+
+# test_invs <- t(crossings[,1:2])
+# invs <- matrix(P[combn(length(P), 2)[,inversions(P, Q)]], nrow = 2)
+# sapply(seq(ncol(test_invs)), function(i){
+# 	p <- test_invs[,i]
+# 	any(apply(invs, 2, function(x){ all(x == p) }))
+# })
+# CL <- simplex_to_character(t(kdtools::lex_sort(do.call(rbind, character_to_simplex(C0)))))
+
+D <- structure(boundary_matrix(c2x(C0)) %% 2, dimnames = list(C0, C0))
+RV <- pbgrad::reduce(D)
+
+pairs <- pbgrad::extract_pairs(RV$R, values = f_c0, collapse = TRUE, essential = TRUE)
+pbgrad::plot_dgm(pairs)
+
+results <- vector(mode = "list", length = ncol(S))
+status_costs <- c(2,2,0,1,2,0,2,0,1)
+wut <- simulate_vineyard(R = RV$R, V = RV$V, S = S, f = function(Rn, Vn, status, ti){
+	# results[[ti]] <<- Rn
+	results[[ti]] <<- status_costs[status]
+}, check_valid = TRUE)
+
+fv <- lapply(crossings[,3], function(lambda){ c(1-lambda)*f_c0 + lambda*f_c1 })
+
+
+lcs <- phtools:::longest_subseq(Q)
+M <- greedy_min_cross(P, Q, lcs)
+rt <- RV$R
+vt <- RV$V
+move_costs <- c()
+for (i in seq(ncol(M))){
+	if (M[1,i] < M[2,i]){
+		res <- move_right(R = rt, V = vt, i = M[1,i], j = M[2,i])
+	} else {
+		res <- move_left(R = rt, V = vt, i = M[1,i], j = M[2,i])
+	}
+	move_costs <- c(move_costs, res$m)
+	rt <- res$R
+	vt <- res$V
+}
+sum(move_costs)
+
+# consistent_schedule <- function(p, q, transpositions, weights = NULL, check=TRUE){
+# 	stopifnot(ncol(transpositions) == 2, is.matrix(transpositions), all(p %in% q))
+# 	stopifnot(all(as.vector(transpositions[,1:2]) %in% p))
+# 	if ()
+# 	S <- matrix(0L, ncol = 0, nrow = 2)
+# 	for (i in seq(nrow(transpositions))){
+# 		tr_idx <- match(transpositions[i,], p)
+# 		stopifnot(abs(diff(tr_idx)) == 1)
+# 		S <- cbind(S, tr_idx)
+# 		p <- permute_move(p, i = tr_idx[1], j = tr_idx[2])
+# 	}
+# 	if (check){ stopifnot(all(p == q)) }
+# }
+
+```
+
+```{r}
+natural_schedule <- function(p, q){
+	stopifnot(all(p %in% q), length(p) == length(q), all(sort(p) == seq(length(p))))
+	S <- matrix(0, ncol = 0, nrow = 2)
+	for (j in seq(length(q))){
+		id_to_move <- q[j]
+		S <- cbind(S, c(which(p == id_to_move), j))
+		p <- permute_move(p, i = S[1,j], j = S[2,j])
+	}
+	stopifnot(all(p == q))
+	S <- S[,!apply(S, 2, function(x) x[1] == x[2] )]
+	return(S)
+}
+# coarsen_schedule <- function(S)
+```
+
+
+## Measuring difference in costs 
+```{r}
+impose_total_order <- function(w, eps=.Machine$double.eps){
+	noise <- unlist(sapply(rle(w)$lengths, function(ti){ c(0, rep(eps, ti-1)) }))
+	return(w+cumsum(noise))
+}
+
+transposition_schedule <- function(k0, k1, dx0, dx1){
+	stopifnot(is.character(k0), is.character(k1))
+	
+	k0_extra <- setdiff(k1, k0) ## To insert 
+	k1_extra <- setdiff(k0, k1) ## To delete 
+		
+	## Reorder K0 to the filtration order
+	k0 <- c(k0, k0_extra)
+	k0_simplices <- c2x(k0)
+	f0_weights <- weights(k0_simplices, dx0)
+	ds <- sapply(k0_simplices, length)
+	cc <- vector("integer", length=length(ds))
+	cc[ds==1] <- rankr::rank_comb(do.call(cbind, k0_simplices[ds == 1]), n = sum(ds==1))
+	cc[ds==2] <- rankr::rank_comb(do.call(cbind, k0_simplices[ds == 2]), n = sum(ds==1))
+	cc[ds==3] <- rankr::rank_comb(do.call(cbind, k0_simplices[ds == 3]), n = sum(ds==1))
+	wlex_order0 <- pbgrad:::lex_order(weights=f0_weights, dim=ds-1, combinadics=cc-1L, n=sum(ds==1))+1L
+	f_k0 <- impose_total_order(f0_weights[wlex_order0], sqrt(.Machine$double.eps))
+	k0 <- k0[wlex_order0]
+
+	## Reorder K1 to match K0's order
+	k1 <- c(k1, k1_extra)
+	k1_simplices <- c2x(k1)
+	f1_weights <- weights(k1_simplices, dx1)
+	ds <- sapply(k1_simplices, length)
+	cc <- vector("integer", length=length(ds))
+	cc[ds==1] <- rankr::rank_comb(do.call(cbind, k1_simplices[ds == 1]), n = sum(ds==1))
+	cc[ds==2] <- rankr::rank_comb(do.call(cbind, k1_simplices[ds == 2]), n = sum(ds==1))
+	cc[ds==3] <- rankr::rank_comb(do.call(cbind, k1_simplices[ds == 3]), n = sum(ds==1))
+	wlex_order1 <- pbgrad:::lex_order(weights=f1_weights, dim=ds-1, combinadics=cc-1L, n=sum(ds==1))+1L
+	
+	## F1 in K1 filtration order
+	f_k1 <- impose_total_order(f1_weights[wlex_order1], sqrt(.Machine$double.eps))
+	k1 <- names(f_k1)
+		
+	## F1 in K0 filtration order 
+	f_k1_matched <- f_k1[match(k0, names(f_k1))]
+
+	## Build a straight-line homotopy 
+	sf_segms <- lapply(seq(length(k0)), function(i){ 	
+		sf::st_linestring(rbind(c(0, f_k0[i]), c(1, f_k1_matched[i]))) 
+	})
+
+	## Make the schedule
+	pairs <- combn(length(sf_segms), 2)
+	crossings <- apply(pairs, 2, function(x){
+		pt <- unclass(sf::st_intersection(sf_segms[[x[1]]], sf_segms[[x[2]]]))
+		if (length(pt) == 0){ return(NULL) }
+		pt <- matrix(pt, ncol = 2)
+		return(cbind(t(replicate(nrow(pt),x)), pt))
+	})
+	crossings <- do.call(rbind, crossings)
+	crossings <- crossings[order(crossings[,3]),]
+	
+	## Generate the schedule
+	P <- seq(length(k0))
+	Q <- match(k1, k0)
+	S <- generate_schedule(P, Q, crossings[,1:2], check = TRUE)
+	
+	return(list(K0=k0,K1=k1,schedule=S))
+}
+
+B <- pbgrad::dms_example(12, "boids")$generator
+time_domain <- seq(0, 1, length.out = 150)
+rips_params <- list(dim = 2L, eps = 0.15, filtered = TRUE)
+
+tr_costs <- vector("numeric", length = length(time_domain))
+tr_perms <- vector("numeric", length = length(time_domain))
+for (i in seq(length(time_domain)-1L)){
+	tau0 <- time_domain[i]
+	tau1 <- time_domain[i+1]
+	dx0 <- B(tau0)$dX
+	dx1 <- B(tau1)$dX
+	K0 <- do.call(simplextree::rips, append(list(d = dx0), rips_params))
+	K1 <- do.call(simplextree::rips, append(list(d = dx1), rips_params))
+	
+	vs <- transposition_schedule(x2c(K0$simplices), x2c(K1$simplices), dx0, dx1)
+
+	# if (i == 1){
+		D <- structure(boundary_matrix(c2x(vs$K0)) %% 2, dimnames = list(vs$K0, vs$K0))
+		RV <- pbgrad::reduce(D)
+	# } else {
+	# 	RV <- new_RV
+	# }
+	
+	results <- vector(mode = "list", length = ncol(vs$schedule))
+	status_costs <- c(2,2,0,1,2,0,2,0,1)
+	new_RV <- simulate_vineyard(R = RV$R, V = RV$V, S = vs$schedule, f = function(Rn, Vn, status, ti){
+		# results[[ti]] <<- Rn
+		results[[ti]] <<- status_costs[status]
+	}, check_valid = TRUE)
+	tr_costs[[i]] <- sum(unlist(results))
+	tr_perms[[i]] <- ncol(vs$schedule)
+	print(i)
+}
+saveRDS(list(tr_costs, tr_perms), file="tr_costs.rds")
+
+S_costs <- vector("numeric", length = length(time_domain))
+S_perms <- vector("numeric", length = length(time_domain))
+for (ii in seq(length(time_domain)-1L)){
+	tau0 <- time_domain[ii]
+	tau1 <- time_domain[ii+1]
+	dx0 <- B(tau0)$dX
+	dx1 <- B(tau1)$dX
+	K0 <- do.call(simplextree::rips, append(list(d = dx0), rips_params))
+	K1 <- do.call(simplextree::rips, append(list(d = dx1), rips_params))
+	
+	
+	vs <- transposition_schedule(x2c(K0$simplices), x2c(K1$simplices), dx0, dx1)
+	D <- structure(boundary_matrix(c2x(vs$K0)) %% 2, dimnames = list(vs$K0, vs$K0))
+	RV <- pbgrad::reduce(D)
+
+	P <- seq(length(vs$K0))
+	Q <- match(vs$K1, vs$K0)
+	lcs <- Q[phtools:::longest_subseq(Q)]
+	M <- greedy_min_cross(P, Q, lcs)
+	rt <- RV$R
+	vt <- RV$V
+	move_costs <- c()
+	for (i in seq(ncol(M))){
+		if (M[1,i] < M[2,i]){
+			res <- move_right(R = rt, V = vt, i = M[1,i], j = M[2,i])
+		} else if (M[1,i] > M[2,i]){
+			res <- move_left(R = rt, V = vt, i = M[1,i], j = M[2,i])
+		} else {
+			move_costs <- c(move_costs, 0)
+			next
+		}
+		if (is.null(res$m)){ stop("here") }
+		move_costs <- c(move_costs, res$m)
+		rt <- res$R
+		vt <- res$V
+	}
+	S_costs[ii] <- sum(move_costs)
+	S_perms[ii] <- ncol(M)
+	print(ii)
+}
+saveRDS(list(S_costs, S_perms), file="S_costs.rds")
+
+nm_costs <- vector("numeric", length = length(time_domain))
+nm_perms <- vector("numeric", length = length(time_domain))
+for (ii in seq(length(time_domain)-1L)){
+	tau0 <- time_domain[ii]
+	tau1 <- time_domain[ii+1]
+	dx0 <- B(tau0)$dX
+	dx1 <- B(tau1)$dX
+	K0 <- do.call(simplextree::rips, append(list(d = dx0), rips_params))
+	K1 <- do.call(simplextree::rips, append(list(d = dx1), rips_params))
+	
+	vs <- transposition_schedule(x2c(K0$simplices), x2c(K1$simplices), dx0, dx1)
+	D <- structure(boundary_matrix(c2x(vs$K0)) %% 2, dimnames = list(vs$K0, vs$K0))
+	RV <- pbgrad::reduce(D)
+	
+	P <- seq(length(vs$K0))
+	Q <- match(vs$K1, vs$K0)
+	
+	M <- natural_schedule(P, Q)
+	rt <- RV$R
+	vt <- RV$V
+	move_costs <- c()
+	for (i in seq(ncol(M))){
+		if (M[1,i] < M[2,i]){
+			res <- move_right(R = rt, V = vt, i = M[1,i], j = M[2,i])
+		} else if (M[1,i] > M[2,i]){
+			res <- move_left(R = rt, V = vt, i = M[1,i], j = M[2,i])
+		} else {
+			move_costs <- c(move_costs, 0)
+			next
+		}
+		if (is.null(res$m)){ stop("here") }
+		move_costs <- c(move_costs, res$m)
+		rt <- res$R
+		vt <- res$V
+	}
+	nm_costs[ii] <- sum(move_costs)
+	nm_perms[ii] <- ncol(M)
+	print(ii)
+}
+saveRDS(list(nm_costs, nm_perms), file="natural_costs.rds")
+cumsum(nm_costs + 2*(nm_perms))
+
+Red_costs <- vector("numeric", length = length(time_domain))
+for (ii in seq(length(time_domain)-1L)){
+	tau0 <- time_domain[ii]
+	tau1 <- time_domain[ii+1]
+	dx0 <- B(tau0)$dX
+	dx1 <- B(tau1)$dX
+	K0 <- do.call(simplextree::rips, append(list(d = dx0), rips_params))
+	K1 <- do.call(simplextree::rips, append(list(d = dx1), rips_params))
+	vs <- transposition_schedule(x2c(K0$simplices), x2c(K1$simplices), dx0, dx1)
+	D <- structure(boundary_matrix(c2x(vs$K1)) %% 2, dimnames = list(vs$K1, vs$K1))
+	RV <- pbgrad::reduce(D)
+	Red_costs[ii] <- RV$nc
+	print(ii)
+}
+saveRDS(Red_costs, file="red_costs.rds")
+
+
+rip_costs <- vector("numeric", length = length(time_domain))
+for (ii in seq(length(time_domain)-1L)){
+	tau0 <- time_domain[ii]
+	tau1 <- time_domain[ii+1]
+	dx0 <- B(tau0)$dX
+	dx1 <- B(tau1)$dX
+	K0 <- do.call(simplextree::rips, append(list(d = dx0), rips_params))
+	K1 <- do.call(simplextree::rips, append(list(d = dx1), rips_params))
+	
+	# vs <- transposition_schedule(x2c(K0$simplices), x2c(K1$simplices), dx0, dx1)
+	
+	eps0 <- max(weights(c(K0$simplices, K1$simplices), dx0))
+	eps1 <- max(weights(c(K0$simplices, K1$simplices), dx1))
+	eps <- max(c(eps0, eps1))+.Machine$double.eps
+	# wut <- invisible(TDAstats::calculate_homology(mat = dx1, dim = 2, threshold = eps))
+	nco <- capture.output({ invisible(TDAstats::calculate_homology(mat = dx1, dim = 2, threshold = eps)) })
+	rip_costs[ii] <- as.integer(nco)
+	# vs <- transposition_schedule(x2c(K0$simplices), x2c(K1$simplices), dx0, dx1)
+	# D <- structure(boundary_matrix(c2x(vs$K0)) %% 2, dimnames = list(vs$K0, vs$K0))
+	# RV <- pbgrad::reduce(D)
+}
+
+K0 <- do.call(simplextree::rips, append(list(d = dx0), rips_params))
+vs <- transposition_schedule(x2c(K0$simplices), x2c(K1$simplices), dx0, dx1)
+D <- structure(boundary_matrix(c2x(vs$K0)) %% 2, dimnames = list(vs$K0, vs$K0))
+RV <- pbgrad::reduce(D)
+dgm_r <- pbgrad::extract_pairs(RV$R, dim = 0:2, values = weights(c2x(vs$K0), dx = dx0), 
+															 collapse = TRUE, essential = FALSE)
+
+eps <- max(weights(c2x(vs$K0), dx = dx0))+.Machine$double.eps
+dgm <- TDAstats::calculate_homology(mat = dx0, dim = 2, threshold = eps)	
+
+
+S_costs <- readRDS("S_costs.rds")
+Red_costs <- readRDS("red_costs.rds")
+tr_costs <- readRDS("tr_costs.rds")
+nm_costs <- readRDS("~/phtools/natural_costs.rds")
+
+dev.off()
+layout(matrix(1:3, ncol = 3))
+C <- do.call(cbind, list(cumsum(Red_costs), cumsum(tr_costs), cumsum(nm_costs), cumsum(S_costs), cumsum(rip_costs)))
+plot(C[,1], type = "l", xlab = "Time", ylab = "Cum. # column operations (log-scale)", 
+		 ylim = c(0, max(range(apply(C, 2, max)))), main = "Cumulative column additions across family")
+lines(C[,2], col = "blue")
+lines(C[,3], col = "red")
+lines(C[,4], col = "orange")
+lines(C[,5], col = "green")
+legend("topleft", legend = c("Reduction", "Transp.", "Moves (natural)", "Ripser", "Moves (LCS)"), col=c("black", "blue", "red", "green", "orange"), lwd = 1, cex=0.65, inset=.02,adj = c(0, 0.6))
+
+PC <- log(do.call(cbind, list(cumsum(tr_perms), cumsum(2*nm_perms), cumsum(2*S_perms))))
+plot(PC[,1], type = "l", col = "blue", xlab = "Time", ylab = "Cum. # permutations (log-scale)", main = "Cumulative permutations across family")
+lines(PC[,2], col = "red")
+lines(PC[,3], col = "orange")
+legend("topleft", legend = c( "Transp.", "Moves (natural)", "Moves (LCS)"), col=c("blue", "red", "orange"), lwd = 1, cex=0.65, inset=.02,adj = c(0, 0.6))
+
+hist(ncc[,1]/choose(ncc[,2], 2), main = expression(paste("Kendall distance between ",K[i],", ",K[i+1])),
+		 xlab = "Normalized kendall distance",freq = FALSE)
+
+# all(pbgrad::extract_pairs(R = wut$R) == pbgrad::extract_pairs(R = rt))
+
+ncross <- list()
+for (ii in seq(length(time_domain)-1L)){
+	tau0 <- time_domain[ii]
+	tau1 <- time_domain[ii+1]
+	dx0 <- B(tau0)$dX
+	dx1 <- B(tau1)$dX
+	K0 <- do.call(simplextree::rips, append(list(d = dx0), rips_params))
+	K1 <- do.call(simplextree::rips, append(list(d = dx1), rips_params))
+	vs <- transposition_schedule(x2c(K0$simplices), x2c(K1$simplices), dx0, dx1)
+	ncross[[ii]] <- c(kendall_dist(match(vs$K1, vs$K0)), length(vs$K0), ncol(vs$schedule))
+	print(ii)
+}
+
+ncc <- do.call(rbind, ncross)
+```
+
+```{r}
+
+move_sequence(symbols = setdiff(P, lcs), s = P, t = Q, lis = lcs, ordered = TRUE)
+```
+
+
+## Greedy transposition cost 
+
+```{r}
+
+## < doesn't work > ##
+# greedily generating most expensive transposition schedule
+K0 <- simplextree::rips(B(0.10)$dX, dim = 1L, eps = 0.15, filtered = TRUE)
+D <- pbgrad::boundary_matrix(K0)
+RV <- pbgrad::reduce(D)
+
+ds <- sapply(str_to_simplex(colnames(D)), length)
+R1 <- RV$R[ds == 1, ds == 2]
+V1 <- RV$V[ds == 2, ds == 2]
+R2 <- RV$R[ds == 2, ds == 3]
+V2 <- RV$V[ds == 3, ds == 3]
+
+K0_simplices <- unlist(simplex_to_str(Filter(function(s) length(s) == 2, K0$simplices)))
+K1_simplices <- sample_filtration(K0_simplices)
+
+m <- length(K0_simplices)
+P <- seq(m)
+Q <- match(K1_simplices, K0_simplices)
+
+schedule <- list()
+results <- list()
+p <- P
+while(any(p != Q)){
+	targets <- match(p, Q)
+	swap_costs <- sapply(seq(length(p)), function(i){
+		cost <- 0
+		if (i < targets[i]){
+			discard <- simulate_vineyard_local(
+				R1 = R1, V1 = V1, R2 = R2, V2 = V2, S = matrix(c(i, i+1), nrow = 2), 
+				f = function(R1n, R2n, V1n, V2n, s, ti){
+				cost <<- status_costs[s]
+			})
+		} else if (i > targets[i]){
+			discard <- simulate_vineyard_local(
+				R1 = R1, V1 = V1, R2 = R2, V2 = V2, S = matrix(c(i-1, i), nrow = 2), 
+				f = function(R1n, R2n, V1n, V2n, s, ti){
+				cost <<- status_costs[s]
+			})
+		}
+		return(cost)
+	})
+	max_i <- which.max(swap_costs)
+	if (max_i < targets[max_i]){
+		S <- matrix(c(max_i, max_i+1), nrow = 2)
+		schedule <<- append(schedule, S)
+	} else if (max_i > targets[max_i]){
+		S <- matrix(c(max_i-1, max_i), nrow = 2)
+		schedule <<- append(schedule, S)
+	}
+	new_RV <- simulate_vineyard_local(R1 = R1, V1 = V1, R2 = R2, V2 = V2, S = S)
+	R1 <- new_RV$R1
+	R2 <- new_RV$R2
+	V1 <- new_RV$V1
+	V2 <- new_RV$V2
+	p <- permute_move(p, i = S[1,1], j = S[2,1])
+	results <- append(results, list(p))
+	print(p)
+}
+
+
+wut <- simulate_vineyard_local(
+	R1 = R1, V1 = V1, R2 = R2, V2 = V2, S = S, 
+	f = function(R1n, R2n, V1n, V2n, s, ti){
+	print(s)
+})
+status_costs[c(5,7)]
+```
+
+
+```{r}
+Mr <- move_sequence(setdiff(f, lcs)+1, s = f+1, t = g+1, lis = lcs+1, ordered = FALSE)
+for (i in sample(length(Mr))[1:5]){
+	M <- Mr[[i]]$moves
+	print_lis_sequence(M, f, lcs)
+}
+
+```
+
+
+```{r}
+sapply(results, function(x) sum(x$n_ops))
+```
+
+

@@ -1,0 +1,97 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{Rcpp}
+
+
+
+
+```
+
+choose(n, 3) overflows 2^64 - 1 somewhere around n=4.75M
+choose(n, 3) overflows 2^32 - 1 somewhere around n=2.9k 
+=>  the combinatorial number system is viable for 64 bit unsigned integer types
+```{r}
+rips <- pbgrad::r_geometric_complex(6, radius = 0.35, dim = 2, filtered = TRUE)
+D <- phtools::boundary_matrix(rips$simplices, dim = c(1,2))
+
+
+
+#
+# 
+# di <- sapply(rips$simplices, length)
+# e_idx <- rankr::rank_comb(x = do.call(cbind, rips$simplices[di == 2]), n = rips$n_simplices[1])
+# t_idx <- rankr::rank_comb(x = do.call(cbind, rips$simplices[di == 3]), n = rips$n_simplices[1])
+# 
+# tri <- rips$simplices[di == 3]
+# m_idx <- do.call(rbind, lapply(seq_along(tri), function(i){
+# 	face_idx <- match(rank_comb(combn(tri[[i]], 2), rips$n_simplices[1]), e_idx)
+# 	cbind(sort(face_idx), i)
+# }))
+# M <- Matrix::sparseMatrix(i = m_idx[,1], j = m_idx[,2], x = rep(c(1.0,-1.0,1.0), length(tri)))
+# rownames(M) <- simplex_to_str(do.call(cbind, rips$simplices[di == 2]))
+# colnames(M) <- simplex_to_str(do.call(cbind, rips$simplices[di == 3]))
+
+# lapply(rips$simplices, function(x){
+# 	matrix(x, ncol = 1), 
+# })
+
+```
+
+```{r}
+L <- cbind(a = runif(10), b = runif(10))
+# outer <- sf::st_multilinestring(list(
+# 	sf::st_linestring(matrix(c(-1,1,1,1), ncol = 2, byrow = TRUE)), 
+# 	sf::st_linestring(matrix(c(1,1,1,-1), ncol = 2, byrow = TRUE)),
+# 	sf::st_linestring(matrix(c(1,-1,-1,-1), ncol = 2, byrow = TRUE)),
+# 	sf::st_linestring(matrix(c(-1,-1,-1,1), ncol = 2, byrow = TRUE))
+# ))
+# plot(outer)
+# apply(L, 1, function(ab){ abline(a = ab[2], b = ab[1]) })
+# abline(h = 0, col = "gray", lty = 4)
+# abline(v = 0, col = "gray", lty = 4)
+# 
+# x_rng <- range(-L[,2]/L[,1])
+# y_rng <- range(L[,2])
+# 
+# 
+# l1 <- sf::st_linestring(matrix(c(0,0.2,1,0.4), ncol = 2, byrow = TRUE))
+# l2 <- sf::st_linestring(matrix(c(0,0.1,1,0.5), ncol = 2, byrow = TRUE))
+# inner <- list(
+# 	sf::st_linestring(matrix(c(0,1,1,1), ncol = 2, byrow = TRUE)), 
+# 	sf::st_linestring(matrix(c(1,1,1,0), ncol = 2, byrow = TRUE)),
+# 	sf::st_linestring(matrix(c(1,0,0,0), ncol = 2, byrow = TRUE)),
+# 	sf::st_linestring(matrix(c(0,0,0,1), ncol = 2, byrow = TRUE))
+# )
+# 
+# wut <- sf::st_multilinestring(list(
+# 	l1,l2,
+# 	sf::st_linestring(matrix(c(0,1,1,1), ncol = 2, byrow = TRUE)), 
+# 	sf::st_linestring(matrix(c(1,1,1,0), ncol = 2, byrow = TRUE)),
+# 	sf::st_linestring(matrix(c(1,0,0,0), ncol = 2, byrow = TRUE)),
+# 	sf::st_linestring(matrix(c(0,0,0,1), ncol = 2, byrow = TRUE))
+# ))
+# 
+# all_segments <- sf::st_union(wut, by_feature = TRUE)
+
+
+```
+
+
+```{r}
+R <- pbgrad::r_geometric_complex(6, radius = 0.25, dim = 2, filtered = TRUE)
+D <- dart::boundary_matrix(R$simplices, dim = c(1,2))
+rv <- dart:::reduce_local_arma(
+	D$matrix[[1]], Matrix::Diagonal(ncol(D$matrix[[1]])), 
+	D$matrix[[2]], Matrix::Diagonal(ncol(D$matrix[[2]]))
+)
+rv$V1
+dart::move_decomp(R = rv[c("R1", "R2")], V = rv[c("V1", "V2")], i = 1, j = 5, dims = 1)
+
+
+
+
+```
+

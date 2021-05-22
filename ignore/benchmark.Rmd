@@ -1,0 +1,500 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(simplextree)
+library(pbgrad)
+library(phtools)
+
+## Torus with genus 2 
+n <- 2
+r <- 0.1
+f <- function(x){ x * (x-1)^2 *(x-2) } # plot(f, from = -0.1, to = 2.1)
+g <- function(x, y){ f(x) + y^2 }
+h <- function(x, y, z){ g(x, y)^2 + z^2 - r^2 }
+
+# x_domain <- seq(0, 2,length.out = 100)
+# y_domain <- seq(-1.5, 1.5, length.out = 100)
+# xy <- as.matrix(expand.grid(x_domain,y_domain))
+# z <- apply(xy, 1, function(z){ g(z[1], z[2]) })
+# Z <- matrix(0, ncol = length(x_domain), nrow = length(y_domain))
+# Z[cbind(match(xy[,1], x_domain), match(xy[,2], y_domain))] <- z
+# contour <- isoband::isolines(x = x_domain, y = y_domain, z = Z, levels = 0)
+# plot(do.call(cbind, contour[[1]][c("x", "y")]))
+
+x_domain <- seq(from = -0.1, to = 2.1,length.out = 15)
+y_domain <- seq(from = -1.5, to = 1.5, length.out = 15)
+z_domain <- seq(from = -0.3, to = 0.3, length.out = 15)
+triangles <- misc3d::contour3d(h, level = 0, x = x_domain, y = y_domain, z = z_domain, 
+									smooth = FALSE, fill = FALSE, engine = "none")
+
+## Converts a given numeric vector to a set of unique indices  
+to_unique_indices <- function(X){
+	## Heuristic to find the right multiplier on the machine precision to determine whether to consider 
+	## two vertices unique or not
+	X_order <- order(X)
+	length_uniques <- sapply(1:50, function(i){ 
+		length(phtools:::unique_numeric(X[X_order], eps = i*.Machine$double.eps)) 
+	})
+	rle_numeric <- rle(length_uniques)
+	rle_numeric$values[which.max(rle_numeric$lengths)]
+	eps_multiplier <- min(which(length_uniques == rle_numeric$values[which.max(rle_numeric$lengths)]))
+	Xu <- phtools:::unique_numeric(X[X_order], eps = eps_multiplier*.Machine$double.eps)
+	X_idx <- sapply(X, function(x){ which.min(abs(x - Xu))})
+	return(list(idx=X_idx, coords=Xu))
+}
+
+X <- with(triangles, { c(v1[,1], v2[,1], v3[,1]) })
+Y <- with(triangles, { c(v1[,2], v2[,2], v3[,2]) })
+Z <- with(triangles, { c(v1[,3], v2[,3], v3[,3]) })
+UX <- to_unique_indices(X)
+UY <- to_unique_indices(Y) 
+UZ <- to_unique_indices(Z)
+I <- do.call(rbind, list(UX$idx, UY$idx, UZ$idx))
+S <- unique(apply(I, 2, simplex_to_str)) ## unique vertex set
+V <- match(apply(I, 2, simplex_to_str), S)
+T_simplices <- matrix(V, nrow = 3, byrow = TRUE)
+
+st <- simplextree::simplex_tree(T_simplices)
+original_v <- unname(apply(str_to_simplex(S), 2, function(idx){ 
+	c(UX$coords[idx[1]], UY$coords[idx[2]], UZ$coords[idx[3]]) 
+}))
+
+## Visualize the preprocessed mesh
+mesh <- rgl::tmesh3d(vertices = original_v, indices = t(st$triangles), homogeneous = FALSE)
+rgl::wire3d(mesh, color = "blue")
+# rgl::aspect3d(x = diff(range(x_domain)), y = diff(range(y_domain)), z = diff(range(z_domain)))
+rgl::box3d()
+rgl::title3d(xlab = "X", ylab = "Y", zlab = "Z")
+
+
+## Grab the subset of point to rotate each
+rh_idx <- which(mesh$vb[1,] > 1)
+lh_idx <- setdiff(seq(ncol(mesh$vb)), rh_idx)
+
+## Custom-rolled rotation matrices
+rotate_x <- function(phi){ cbind(c(1, 0, 0), c(0, cos(phi), sin(phi)), c(0, -sin(phi), cos(phi))) }
+v_ecc <- sqrt(rowMeans(as.matrix(dist(t(original_v)))))
+v_ecc <- (v_ecc - min(v_ecc))/diff(range(v_ecc))
+# rgl::points3d(t(original_v), col = bin_color(v_ecc))
+	
+## Given lambda in [0, 1], yields a point cloud interpolating between the original 
+## double torus and its twisted version
+interpolated_pc <- function(lambda){
+	stopifnot(all(range(v_ecc) == c(0,1)))
+	right_pc <- sapply(rh_idx, function(i){
+		Rx <- rotate_x(lambda*(pi/8)*v_ecc[i])
+		Rx %*% original_v[,i,drop=FALSE]
+	})
+	left_pc <- sapply(lh_idx, function(i){
+		Rx <- rotate_x(lambda*(-pi/8)*v_ecc[i])
+		Rx %*% original_v[,i,drop=FALSE]
+	})
+	return(cbind(right_pc, left_pc)[,order(c(rh_idx, lh_idx))])
+}
+# right_handle <- rgl::rotate3d(mesh, angle = pi/8, x = 1, y = 0, z = 0)
+# left_handle <- rgl::rotate3d(mesh, angle = -pi/8, x = 1, y = 0, z = 0)
+# new_v <- cbind(right_handle$vb[,rh_idx], left_handle$vb[,lh_idx])[,order(c(rh_idx, lh_idx))]
+# new_v <- new_v[1:3,]
+	
+x_rng <- diff(range(x_domain))
+y_rng <- diff(range(y_domain))
+z_rng <- diff(range(z_domain))
+rgl::aspect3d(x = 1, y = y_rng/x_rng, z = z_rng/x_rng)
+
+mesh_interp <- mesh
+mesh_interp$vb <- rbind(interpolated_pc(1), 1)
+rgl::wire3d(mesh_interp)
+rgl::box3d()
+rgl::title3d(xlab = "X", ylab = "Y", zlab = "Z")
+
+
+
+
+# interp_v <- sapply(seq(length(v_ecc)), function(i){ 
+# 	new_v[1:3,i]*v_ecc[i] + original_v[1:3,i]*(1-v_ecc[i])
+# })
+# rgl::points3d(t(interp_v), col = bin_color(v_ecc))
+
+# mesh_interp <- mesh
+# mesh_interp$vb <- rbind(interp_v, 1)
+# rgl::wire3d(mesh_interp)
+# rgl::box3d()
+# rgl::title3d(xlab = "X", ylab = "Y", zlab = "Z")
+
+
+## lower-star filtration @ a
+a_ecc <- sqrt(rowMeans(as.matrix(dist(t(original_v)))))
+fv_a <- straverse(level_order(st), function(simplex){ 
+	structure(max(a_ecc[simplex]), names = simplex_to_str(simplex))
+})
+
+## Conclusion: distance between filtration must be relatively small. Need for the fv_b to be closer. 
+
+## The target *filtration* interpolation 
+# phi <- 0.40
+# target_ls <- (1-phi)*fv_a + phi*fv_b
+# 
+# objective <- function(lambda){
+# 	# xy <- original_v*(1.0-lambda) + new_v*lambda
+# 	xy <- interpolated_pc(lambda)
+# 	v_ecc <- sqrt(rowMeans(as.matrix(parallelDist::parallelDist(t(xy)))))
+# 	s_ecc <- straverse(level_order(st), function(simplex){ max(v_ecc[simplex]) })
+# 	s_ecc
+# 	# sum(abs(s_ecc - target_ls))
+# }
+
+# wut <- sapply(seq(0,1,length.out = 20), objective)
+# plot.default(NULL, NULL, xlim = c(1, ncol(wut)), ylim = c(0.80, 1.1))
+# apply(wut, 1, function(x){
+# 	lines(x)
+# })
+# 
+# 
+# optim(phi, fn = objective, lower = phi-0.05, upper=phi+0.05)
+
+## Give up on critical point search: just assume an eps step size small 
+## enough to capture topological critical events
+simplex_names <- straverse(level_order(st), simplex_to_str)
+Filtrations <- lapply(seq(0, 1, length.out = 10), function(tau){
+	pc <- interpolated_pc(tau)
+	# R <- simplextree::rips(parallelDist::parallelDist(t(pc)), dim = 2, filtered = TRUE)
+	# v_ecc <- sqrt(rowMeans(as.matrix(parallelDist::parallelDist(t(pc)))))
+	# s_ecc <- straverse(level_order(st), function(simplex){ max(v_ecc[simplex]) })
+	fv <- pc[3,]
+	f <- straverse(level_order(st), function(simplex){ max(fv[simplex]) })
+	I <- order(f)
+	list(f=structure(f[I], names = simplex_names[I]), I=I)
+})
+
+## Start with the first filtration permutation 
+D <- pbgrad::boundary_matrix(st)
+D <- with(Filtrations[[1]], { D[I, I] })
+
+RV <- pbgrad::reduce(D)
+R <- RV$R
+V <- RV$V
+
+ds <- sapply(str_to_simplex(colnames(D)), length)
+R1 <- R[ds == 1L,ds == 2L]; R2 <- R[ds == 2L,ds == 3L]
+V1 <- V[ds == 2L,ds == 2L]; V2 <- V[ds == 3L,ds == 3L]
+
+Sa <- names(Filtrations[[1]]$f)[sapply(str_to_simplex(names(Filtrations[[1]]$f)), length) == 2L]
+Sb <- names(Filtrations[[2]]$f)[sapply(str_to_simplex(names(Filtrations[[2]]$f)), length) == 2L]
+
+# ## P contains the positions of where to move simplices in A to B
+# P <- match(Sa, Sb)
+to_move <- Sb[which(Sa != Sb)] ## natural order
+# to_move <- Sb
+P <- Sa
+ca <- 0 ## column additions 
+pn <- 0 ## num. permutations 
+for (sigma in to_move){
+	si <- match(sigma, P)
+	ti <- match(sigma, Sb)
+	if (si < ti){
+		# ca <- ca + sum(V1[si, seq(si+1, ti)])
+		RV <- move_right(R = list(R1, R2), V = list(V1, V2), i = si, j = ti)
+		R1 <- RV$R[[1]]; R2 <- RV$R[[2]]
+		V1 <- RV$V[[1]]; V2 <- RV$V[[2]]
+		ca <- ca + sum(RV$m)
+	} else if (si > ti){
+		#ca <- ca + sum(V1[seq(ti+1, si), si])
+		RV <- move_left(R = list(R1, R2), V = list(V1, V2), i = si, j = ti)
+		R1 <- RV$R[[1]]; R2 <- RV$R[[2]]
+		V1 <- RV$V[[1]]; V2 <- RV$V[[2]]
+		ca <- ca + sum(RV$m)
+	} else { next }
+	pn <- pn + abs(ti - si)
+	P <<- permute_move(P, i = si, j = ti)
+	print(sprintf("Moved %d to %d (%d cum. additions)", si, ti, ca))
+}
+
+## Using optimal permutation edit distance
+move_indices <- ed_moves(x = Sa, y = Sb)
+ca <- 0 ## column additions 
+pn <- 0 ## number permutations
+for (i in seq(nrow(move_indices))){
+	si <- move_indices[i,1]
+	ti <- move_indices[i,2]
+	if (si < ti){
+		RV <- move_right(R = list(R1, R2), V = list(V1, V2), i = si, j = ti)
+		R1 <- RV$R[[1]]; R2 <- RV$R[[2]]
+		V1 <- RV$V[[1]]; V2 <- RV$V[[2]]
+		ca <- ca + sum(RV$m)
+	} else if (si > ti){
+		RV <- move_left(R = list(R1, R2), V = list(V1, V2), i = si, j = ti)
+		R1 <- RV$R[[1]]; R2 <- RV$R[[2]]
+		V1 <- RV$V[[1]]; V2 <- RV$V[[2]]
+		ca <- ca + sum(RV$m)
+	} else { next }
+	pn <- pn + abs(ti - si)
+	print(sprintf("Moved %d to %d (%d cum. additions)", si, ti, ca))
+}
+
+
+check_RV <- function(R,V,D){
+	c1 <- pbgrad::is_reduced(R)
+	c2 <- as.logical(Matrix::isTriangular(V, upper = TRUE))
+	c3 <- all(((D %*% V) %% 2) - (R %% 2) == 0)
+	return(c(c1,c2,c3))
+}
+## phtools:::longest_subseq(1:10)
+
+
+wut <- pbgrad::update_RV(RV = RV, f0 = Filtrations[[1]]$f, f1 = Filtrations[[2]]$f, 
+	f = function(R, W, s){
+		print(s)
+	}
+)
+
+original_v
+
+#direction_vectors <- (new_v - mesh$vb)[1:3,]
+#direction_vectors <- apply(direction_vectors, 2, function(v){ v/norm(matrix(v), type = "F") })
+
+
+
+# rgl::rotate3d(mesh, angle = 90)
+# rgl::rotationMatrix(angle = pi/2, x = 1, y = 0, z = 0) %*% 
+
+# Xu <- phtools:::unique_numeric(X[X_order], eps = 3*.Machine$double.eps)
+# 
+# xyz <- do.call(cbind, list(x_domain, y_domain, z_domain))
+# V1 <- lapply(seq(3), function(i){ sapply(triangles$v1[,i], function(cc){ which.min(abs(cc-xyz[,i])) }) })
+# V2 <- lapply(seq(3), function(i){ sapply(triangles$v2[,i], function(cc){ which.min(abs(cc-xyz[,i])) }) })
+# V3 <- lapply(seq(3), function(i){ sapply(triangles$v3[,i], function(cc){ which.min(abs(cc-xyz[,i])) }) })
+# 
+# V1_unique <- unique(do.call(cbind, V1))
+# V2_unique <- unique(do.call(cbind, V2))
+# V3_unique <- unique(do.call(cbind, V3))
+# V_unique <- unique(do.call(rbind, list(V1_unique, V2_unique, V3_unique)))
+# V_sorted <- kdtools::kd_sort(V_unique)
+
+
+match(triangles$v1[,1], x_domain)
+
+v1_x <- sapply(triangles$v1[,1], function(x){ which.min(abs(x - x_domain)) })
+v2_x <- sapply(triangles$v1[,2], function(y){ which.min(abs(y - y_domain)) })
+v3_x <- sapply(triangles$v1[,3], function(x){ which.min(abs(z - z_domain)) })
+
+
+
+aa <- letters[1:10]
+# bb <- sample(aa)
+bb <- c("e", "d", "g", "j", "c", "h", "a", "f", "b", "i")
+
+
+
+ed_moves(aa, bb)
+ed_moves(letters[1:20], sample(letters[1:20]))
+
+
+lis <- bb[phtools:::longest_subseq(match(bb, aa))]
+
+
+## Returns the set of sequential move operations to perform on 'x' 
+## needed to transform it to 'y'
+ed_moves <- function(x, y){
+	stopifnot(length(x) == length(y))
+	lis <- y[phtools:::longest_subseq(match(y, x))]
+	pp <- x
+	to_move <- y[-match(lis, y)]
+	moves <- matrix(integer(0L), ncol = 2)
+	for (sym in to_move){
+		lis <- y[sort(match(lis, y))]
+		target_idx <- match(sym, y)
+		ref_lis_idx <- match(lis, y)
+		cur_lis_idx <- match(lis, pp)
+		
+		lb <- y[tail(ref_lis_idx[ref_lis_idx < target_idx], 1L)]
+		ub <- y[head(ref_lis_idx[ref_lis_idx > target_idx], 1L)]
+			
+		if (length(lb) == 0){
+			ub_idx <- match(ub, pp)
+			el_idx <- match(sym, pp)
+			if (el_idx > ub_idx){
+				moves <- rbind(moves, c(el_idx, ub_idx))
+			} else {
+				moves <- rbind(moves, c(el_idx, ub_idx-1L))
+			}
+		} else if (length(ub) == 0){
+			lb_idx <- match(lb, pp)
+			el_idx <- match(sym, pp)
+			if (el_idx > lb_idx){
+				moves <- rbind(moves, c(el_idx, lb_idx+1L))
+			} else {
+				moves <- rbind(moves, c(el_idx, lb_idx))
+			}
+		} else {
+			target_rng <- match(c(lb,ub), pp)
+			current_pos <- match(sym, pp)
+			if (current_pos >= target_rng[1]){
+				moves <- rbind(moves, c(current_pos, target_rng[1]+1L))
+			} else {
+				moves <- rbind(moves, c(current_pos, target_rng[1]))
+			}
+		}
+		lis <- c(lis, sym)
+		pp <- permute_move(pp, i = moves[nrow(moves),1], j = moves[nrow(moves),2])
+	}
+	if (any(pp != y)){ stop("Failed") }
+	return(moves)
+}
+
+
+```
+
+```{r}
+
+nat_moves <- function(Sa, Sb){
+	to_move <- Sb[which(Sa != Sb)] ## natural order
+	P <- Sa
+	moves <- matrix(integer(0L), ncol = 2)
+	for (sigma in to_move){
+		si <- match(sigma, P)
+		ti <- match(sigma, Sb)
+		moves <- rbind(moves, c(si, ti))
+		P <<- permute_move(P, i = si, j = ti)
+	}
+	return(moves)
+}
+
+count_moves <- function(RV, Sa, Sb, type=c("natural", "ed")){
+	R1 <- RV$R[[1]]; R2 <- RV$R[[2]]
+	V1 <- RV$V[[1]]; V2 <- RV$V[[2]]
+	if (missing(type) || type == "natural"){
+		move_indices <- nat_moves(Sa = Sa, Sb = Sb)
+	} else {
+		move_indices <- ed_moves(x = Sa, y = Sb)
+	}
+	ca <- 0 ## column additions 
+	pn <- 0 ## num. permutations 
+	if (nrow(move_indices) > 0){
+		for (i in seq(nrow(move_indices))){
+			si <- move_indices[i,1]
+			ti <- move_indices[i,2]
+			if (si < ti){
+				RV <- move_right(R = list(R1, R2), V = list(V1, V2), i = si, j = ti)
+				R1 <- RV$R[[1]]; R2 <- RV$R[[2]]
+				V1 <- RV$V[[1]]; V2 <- RV$V[[2]]
+				ca <- ca + sum(RV$m)
+			} else if (si > ti){
+				RV <- move_left(R = list(R1, R2), V = list(V1, V2), i = si, j = ti)
+				R1 <- RV$R[[1]]; R2 <- RV$R[[2]]
+				V1 <- RV$V[[1]]; V2 <- RV$V[[2]]
+				ca <- ca + sum(RV$m)
+			} else { next }
+			pn <- pn + abs(ti - si)
+		}
+	}
+	return(list(RV=list(R=list(R1,R2), V=list(V1,V2)), counts=c(ca, pn)))
+}
+
+
+```
+```{r}
+box <- cbind(runif(n = 1000, min = -1, max = 1), runif(n = 1000, min = -1, max = 1))
+box <- box[apply(box, 1, function(x) norm(matrix(x, nrow = 1), "F")) <= 1,]
+tau <- seq(0, 2*pi-(2*pi/16), length.out = 16)
+circle <- cbind(cos(tau), sin(tau))
+eight <- cbind(cos(tau), sin(tau)*cos(tau))
+disc <- box[landmark::landmarks_maxmin(box, num = 16),]
+
+disc_to_circle <- function(lambda){ disc*(1-lambda) + circle*lambda }
+circle_to_eight <- function(lambda){ circle*(1-lambda) + eight*lambda }
+eight_to_disc <- function(lambda){ eight*(1-lambda) + disc*lambda }
+
+
+## beginning decomposition 
+st1 <- rips(d = dist(disc_to_circle(0.00)), dim = 2, filtered = TRUE, eps = Inf)
+sa <- unlist(simplex_to_str(st1$simplices))
+D <- pbgrad::boundary_matrix(st1) %% 2
+
+rp <- permutations::rperm(n = 100, r = st1$n_simplices[1], moved = st1$n_simplices[1])
+RP <- matrix(sapply(rp, as.vector), nrow = st1$n_simplices[1], byrow = TRUE)
+
+T1 <- lapply(seq(0, 1, length.out = 5), function(lambda){ 
+    R <- rips(d = dist(disc_to_circle(lambda)), dim = 2, filtered = TRUE, eps = Inf)
+    S <- unlist(simplex_to_str(R$simplices))
+    S[sapply(R$simplices, length) == 2]
+})
+T2 <- lapply(seq(0, 1, length.out = 5), function(lambda){ 
+    R <- rips(d = dist(circle_to_eight(lambda)), dim = 2, filtered = TRUE, eps = Inf)
+    S <- unlist(simplex_to_str(R$simplices))
+    S[sapply(R$simplices, length) == 2]
+})
+T3 <- lapply(seq(0, 1, length.out = 5), function(lambda){ 
+    R <- rips(d = dist(eight_to_disc(lambda)), dim = 2, filtered = TRUE, eps = Inf)
+    S <- unlist(simplex_to_str(R$simplices))
+    S[sapply(R$simplices, length) == 2]
+})
+F_order <- cbind(do.call(cbind, T1), do.call(cbind, T2), do.call(cbind, T3))
+
+results <- list()
+for (jj in seq(ncol(RP))){
+	D <- pbgrad::boundary_matrix(st1) %% 2
+	ds <- sapply(str_to_simplex(colnames(D)), length)
+	D1 <- D[ds == 1, ds == 2][RP[,jj],, drop=FALSE]
+	D[ds == 1, ds == 2] <- D1
+	cn <- colnames(D)
+	cn[ds == 1] <- cn[ds == 1][RP[,jj]]
+	dimnames(D) <- list(cn, cn)
+	RV <- pbgrad::reduce(D)
+	
+	R1 <- RV$R[ds == 1, ds == 2]; R2 <- RV$R[ds == 2, ds == 3]
+	V1 <- RV$V[ds == 2, ds == 2]; V2 <- RV$R[ds == 3, ds == 3]
+	additions <- matrix(integer(0), ncol = 2)
+	for (i in seq(1, ncol(F_order)-1)){
+		res <- count_moves(list(R=list(R1,R2), V=list(V1,V2)), F_order[,i], F_order[,i+1], 
+											 type = "ed")
+		additions <- rbind(additions, res$counts)
+		R1 <- res$RV$R[[1]]; R2 <- res$RV$R[[2]]
+		V1 <- res$RV$V[[1]]; V2 <- res$RV$V[[2]]
+	}
+	results <- append(results, list(additions))
+}
+
+st <- pbgrad::r_geometric_complex(n = 10, radius = 0.20, dim = 2)
+D <- pbgrad::boundary_matrix(st)
+
+D[ds == 1, ds == 2] <- D[ds == 1, ds == 2][sample(1:10),]
+
+RV <- pbgrad::reduce(D)
+ds <- sapply(level_order(st), length)
+R1 <- RV$R[ds == 1, ds == 2]; R2 <- RV$R[ds == 2, ds == 3]
+V1 <- RV$V[ds == 2, ds == 2]; V2 <- RV$R[ds == 3, ds == 3]
+
+e1 <- colnames(RV$R[,ds == 2])
+e2 <- sample(e1)
+count_moves(list(R=list(R1,R2), V=list(V1,V2)), e1, e2)
+
+```
+
+
+```{r}
+bin_color <- function(x, col_pal = "rainbow", output_format = c("hex9", "hex7")){
+  if (missing(col_pal) || col_pal == "rainbow"){ col_pal <- rev(grDevices::rainbow(100L, start = 0, end = 4/6)) }
+  col_res <- length(col_pal)
+  binned_idx <- cut(x, breaks = col_res, labels = FALSE)
+  binned_colors <- col_pal[binned_idx]
+  if (missing(output_format) || output_format == "hex9"){ return(binned_colors) }
+  else if (output_format == "hex7"){ return(substr(binned_colors, start = 0L, stop = 7L)) }
+  else { stop("'output_format' must be one of 'hex9' or 'hex7'.") }
+}
+```
+
+```{r}
+library(reticulate)
+smal_fp <- normalizePath(file.path( "~/Downloads/smal_online_V1.0/smal_CVPR2017_data.pkl"))
+shape_data <- reticulate::py_load_object(filename = smal_fp)
+
+shape_data <- reticulate::py_load_object(filename = normalizePath("~/Downloads/smal_online_V1.0/smal_CVPR2017.pkl"))
+
+
+
+
+```
+

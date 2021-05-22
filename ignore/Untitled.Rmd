@@ -1,0 +1,61 @@
+---
+title: "Functional masking"
+output: html_notebook
+---
+
+
+```{r}
+## Random matrix
+n <- 10
+X <- matrix(runif(n*n), nrow = n, ncol = n)
+
+## Checking N,S,E,W neighbors + self are all above threshold
+threshold <- 0.30
+results <- list()
+for (i in seq(nrow(X))){
+	for (j in seq(ncol(X))){
+		if (i != 1 && i != n && j != 1 && j != n){
+			if (X[i,j] > threshold){ 
+				results <- c(results, c(i,j))
+			}
+		} else if (...){
+			## TODO: fill in rest of the corner cases  
+		}
+	}
+}
+
+fi <- simplex_to_str(pbgrad::r_geometric_complex(250, radius =0.10, dim = 2, filtered=TRUE)$simplices)
+f0 <- unlist(fi)
+k <- sapply(1:1000, function(i){
+	f1 <- phtools::sample_filtration(f0)
+	length(phtools::perm_lcs(match(f1, f0)))
+})
+
+```
+
+Lead/lag example 
+```{r}
+x <- c(1, 2, 3, 4, 5)
+print(x)
+print(c(0, x[-length(x)]))
+print(c(x[-1], 0))
+```
+
+
+Example checking N,S,E,W 
+```{r}
+## Random matrix
+n <- 10
+X <- matrix(runif(n*n), nrow = n, ncol = n)
+
+## For each entry e_i, returns whether the triple entries at positions (i-1, i, i+1) are all above threshold
+above_threshold <- function(A, threshold){
+	A_lead <- c(0, A[-length(A)])
+	A_lag <- c(A[-1], 0)
+	return(A_lag > threshold & A > threshold & A_lead > threshold)
+}
+
+threshold <- 0.30
+M <- matrix(FALSE, nrow = n, ncol = n)
+M[above_threshold(X, threshold) & t(above_threshold(t(X), threshold))] <- TRUE
+```

@@ -1,0 +1,18 @@
+Package: dart
+Type: Package
+Title: Provides tools for computing persistent homology dynamically
+Version: 0.1
+Date: 2021-05-10
+Depends: Matrix
+Author: Matt Piekenbrock
+Maintainer: Matt Piekenbrock <matt.piekenbrock@gmail.com>
+Description: This packages provides a set of tools for computing and updating the matrix 
+	decomposition which characterizes the persistent homology of a filtered complex. 
+License: MIT 
+Imports: Rcpp (>= 1.0.4), R6, Matrix, RcppArmadillo, simplextree
+LinkingTo: Rcpp, RcppArmadillo, simplextree
+RoxygenNote: 7.1.1
+Encoding: UTF-8
+SystemRequirements: C++20
+Suggests: 
+    testthat

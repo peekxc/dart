@@ -1,0 +1,66 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+st <- simplextree::simplex_tree(list(c(1,2), c(2,3), c(3,4), c(1,4)))
+D <- pbgrad::boundary_matrix(st)
+D <- D[1:4,5:8] %% 2
+
+RV <- pbgrad::reduce(D)
+R <- RV$R
+V <- RV$V
+
+Pp <- colnames(R)
+Qp <- colnames(R)[Matrix::invPerm(c(3,1,4,2))]
+# kendall_dist(match(Qpmnnnnnnnnnnnnj m,, colnames(R)))
+
+lcs <- Pp[c(2,3)]
+# lcs <- Qp[phtools:::longest_subseq(match(Qp, Pp))]
+# all_lcs <- phtools:::all_lcs(seq(length(Pp)), b = match(Qp, Pp))
+# 
+MS <- move_sequence(setdiff(Pp, lcs), Pp, Qp, lis = lcs)
+
+p1 <- permute_move(Pp, 1, 2)
+p2 <- permute_move(p1, 4, 2)
+
+
+p1 <- permute_move(Pp, 4, 3)
+p2 <- permute_move(p1, 1, 3)
+
+move_right(RV$R, RV$V, 1, 4)
+```
+
+```{r}
+st <- simplextree::simplex_tree(combn(3,2))
+D <- pbgrad::boundary_matrix(st)
+D <- D[,c(1:3,6,5,4)] %% 2
+
+RV <- pbgrad::reduce(D)
+R <- RV$R
+V <- RV$V
+
+## Less expensive
+rv1 <- move_right(R, V, i = 4, j = 6)
+rv2 <- move_left(rv1$R, rv1$V, i = 5, j = 4)
+
+## More expensive
+rv1 <- move_left(R, V, i = 6, j = 4)
+rv2 <- move_right(rv1$R, rv1$V, i = 5, j = 6)
+
+```
+
+
+Decoarsening schedules
+```{r}
+a <- seq(10)
+b <- sample(a)
+lcs <- b[phtools:::longest_subseq(b)]
+m1 <- move_sequence(setdiff(a, lcs), s = a, t = b, lis = lcs, ordered = TRUE)
+
+
+
+```
+

@@ -1,0 +1,39 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+P <- seq(8)
+Q <- sample(P)
+lis <- Q[phtools:::longest_subseq(match(Q, P))]
+
+S <- list(P)
+M <- move_sequence(symbols = setdiff(Q, lis), s = P, t = Q, lis = lis, f = function(x, x_lis){
+	S <<- append(S, list(x))
+})
+
+BM <- lapply(seq(length(S)), function(j){
+	B <- matrix(0L, nrow = length(P), ncol = length(P))
+	p <- S[[j]]
+	for (i in seq(length(p))){
+		B[i, p[i]:Q[i]] <- 1
+	}
+	return(B)
+})
+
+lapply(seq(length(BM)), function(i){
+	B <- BM[[i]]
+	PM <- pbgrad::permutation_matrix(Matrix::invPerm(S[[i]]))
+	B %*% PM
+})
+
+
+
+permute_move(M = )
+```
+

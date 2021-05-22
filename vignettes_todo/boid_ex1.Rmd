@@ -1,0 +1,651 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(simplextree)
+library(phtools)
+dms <- pbgrad::dms_example(20, example = "boids")$generator
+
+## 20 points, maximum rips eps = 0.30 (2d complex), time step = 0.0025, time domain = [0, 0.15]
+
+## Get all simplices that appear up to eps
+eps <- 0.30
+time <- seq(0, 0.15, by=0.0025)
+unique_simplices <- c()
+for (tau in time){
+	dx <- dms(tau)$dX
+	st <- simplextree::rips(dx, eps = eps, dim = 2)
+	unique_simplices <- union(unique_simplices, unlist(simplex_to_str(straverse(preorder(st), identity))))
+}
+
+## Match the filtrations to create one-to-one correspondences
+filt_simplices <- lapply(time, function(tau){
+	dx <- dms(tau)$dX
+	st <- simplextree::rips(dx, eps = Inf, dim = 2, filtered = TRUE)
+	st_sim <- unlist(simplex_to_str(st$simplices))
+	idx <- na.omit(match(st_sim, unique_simplices))
+	list(simplices=unique_simplices[idx], weights=st$weights[match(unique_simplices[idx], st_sim)])
+})
+
+dgms <- lapply(filt_simplices, function(x){
+	D <- boundary_matrix(str_to_simplex(x$simplices))
+	dimnames(D) <- list(x$simplices, x$simplices)
+	RV <- pbgrad::reduce(D)
+	pbgrad::extract_pairs(RV$R, values = x$weights, essential = FALSE, collapse = TRUE)
+})
+
+eps_values <- seq(0, 0.30, length.out = 350) ## MUST be capped at eps! beyodn that are invalid diagrams
+bc0 <- do.call(cbind, lapply(dgms, function(dgm){ pbgrad::betti_curve(dgm, dim = 0, values = eps_values) }))
+bc1 <- do.call(cbind, lapply(dgms, function(dgm){ pbgrad::betti_curve(dgm, dim = 1, values = eps_values) }))
+
+## Crocker plot for H1
+dev.off()
+x <- seq_along(time)
+y <- eps_values
+z <- t(bc1)
+# par(oma=c(0,0,0,0), omd=c(0,1,0,1), las=1, pty="s")
+plot(NA, xlim = range(x), ylim = c(0.05, max(y)), xlab = "Time step", ylab = "Rips eps parameter", 
+		 main = "CROCKER plot (H1)", frame.plot = TRUE, axes = TRUE, xaxs="i", yaxs="i")
+.filled.contour(x=x, y=y, z=z, levels=unique(as.vector(z)), 
+								col = rev(viridis::rocket(length(unique(as.vector(z))))))
+legend("topright", legend = c(0:3), fill = rev(viridis::rocket(4)), horiz = TRUE, 
+			 x.intersp = 0.50, y.intersp = 0.2)
+
+xy <- cbind(c(12,14,22,33, 44), c(0.23, 0.23, 0.26, 0.18, 0.21))
+points(xy, col = viridis::viridis(10)[6], pch = 4, lwd = 2.5)
+
+## Plot complexes 
+dev.off()
+layout(matrix(seq(nrow(xy)), nrow = 1))
+for (i in seq(nrow(xy))){
+	local_tau <- xy[i,1]
+	local_eps <- xy[i,2]
+	dx <- dms(time[local_tau])$dX
+	st <- simplextree::rips(dx, eps = eps, dim = 2, filtered = TRUE)
+	st_sim <- st$simplices
+	st_wei <- st$weights
+
+	s_col_bg <- straverse(level_order(st), function(simplex){ 
+		fi_idx <- match(list(simplex), st_sim)
+		ifelse(st_wei[fi_idx] > local_eps, 
+					 adjustcolor("black", alpha.f = 0.01), 
+					 adjustcolor("white", alpha.f = 0))
+		# if (st_wei[fi_idx] > local_eps){ return(adjustcolor("black", alpha.f = 0.01)) }
+		#c(adjustcolor("red", alpha.f = 1.0), "darkblue", "orange")[length(simplex)]
+	})
+	plot(st, coords = dms(time[local_tau])$X, color_pal = s_col_bg, maximal = TRUE, text_opt=c(labels=NA))
+	s_col <- straverse(level_order(st), function(simplex){ 
+		fi_idx <- match(list(simplex), st_sim) 
+		ifelse(st_wei[fi_idx] > local_eps, 
+					 adjustcolor("white", alpha.f = 0),
+					 c(adjustcolor("red", alpha.f = 1.0), "darkblue", "orange")[length(simplex)]
+		)
+		# if (st_wei[fi_idx] > local_eps){ return(adjustcolor("black", alpha.f = 0.01)) }
+	})
+	plot(st, coords = dms(time[local_tau])$X, color_pal = s_col, maximal = TRUE, text_opt=c(labels=NA), 
+			 add = TRUE)
+	title(sprintf("Time: %d, eps=%g", local_tau, local_eps))
+}
+
+## Crocker plot for H0
+dev.off()
+dev.new(width=8, height=4, unit="in")
+x <- seq_along(time)
+y <- eps_values
+z <- t(bc0)
+contour(x, y, z, xlim = range(x), ylim = c(0.0, 0.21), labels = FALSE, 
+				xaxs="i", yaxs="i", drawlabels = FALSE, 
+				col = viridis::inferno(n = 20, begin = 0.20, end = 1.0), 
+				main = "CROCKER plot (H0)", ylab = "Rips eps parameter", xlab = "Time index")
+xy <- cbind(c(2,4,23,33,47), c(0.11, 0.11, 0.0397, 0.18, 0.116))
+points(xy, col = viridis::viridis(10)[6], pch = 4, cex = 2.5)
+
+## Plot complexes 
+dev.off()
+layout(matrix(seq(nrow(xy)), nrow = 1))
+for (i in seq(nrow(xy))){
+	local_tau <- xy[i,1]
+	local_eps <- xy[i,2]
+	dx <- dms(time[local_tau])$dX
+	st <- simplextree::rips(dx, eps = eps, dim = 2, filtered = TRUE)
+	st_sim <- st$simplices
+	st_wei <- st$weights
+
+	s_col_bg <- straverse(level_order(st), function(simplex){ 
+		fi_idx <- match(list(simplex), st_sim)
+		ifelse(st_wei[fi_idx] > local_eps, 
+					 adjustcolor("black", alpha.f = 0.01), 
+					 adjustcolor("white", alpha.f = 0))
+		# if (st_wei[fi_idx] > local_eps){ return(adjustcolor("black", alpha.f = 0.01)) }
+		#c(adjustcolor("red", alpha.f = 1.0), "darkblue", "orange")[length(simplex)]
+	})
+	plot(st, coords = dms(time[local_tau])$X, color_pal = s_col_bg, maximal = TRUE, text_opt=c(labels=NA))
+	s_col <- straverse(level_order(st), function(simplex){ 
+		fi_idx <- match(list(simplex), st_sim) 
+		ifelse(st_wei[fi_idx] > local_eps, 
+					 adjustcolor("white", alpha.f = 0),
+					 c(adjustcolor("red", alpha.f = 1.0), "darkblue", "orange")[length(simplex)]
+		)
+		# if (st_wei[fi_idx] > local_eps){ return(adjustcolor("black", alpha.f = 0.01)) }
+	})
+	plot(st, coords = dms(time[local_tau])$X, color_pal = s_col, maximal = TRUE, text_opt=c(labels=NA), 
+			 add = TRUE)
+	title(sprintf("Time: %d, eps=%g", local_tau, local_eps))
+}
+
+
+
+# legend("topright", legend = c(0:3), fill = rev(viridis::rocket(4)), horiz = TRUE, 
+# 			 x.intersp = 0.50, y.intersp = 0.2)
+# 
+# xy <- cbind(c(12,14,22,33, 44), c(0.23, 0.23, 0.26, 0.18, 0.21))
+# points(xy, col = viridis::viridis(10)[6], pch = 4, cex = 1.5)
+
+## Boid animation 
+animation::saveGIF({
+	for (tau in seq(0, 0.15, by = 0.0025)){
+		dms_x <- dms(tau)
+		plot(simplextree::rips(dms_x$dX, eps = eps, dim = 2), coords = dms_x$X, xlim = c(0,0.5), ylim=c(0, 0.5))
+		box()
+	}
+}, movie.name = "boids.gif", interval = 0.10)
+
+```
+
+```{r}
+## Crocker plot for H1
+dev.off()
+layout(matrix(c(2,3,4,1,1,5,6,7,1,1), nrow = 2, byrow = TRUE))
+
+x <- seq_along(time)
+y <- eps_values
+z <- t(bc1)
+# par(oma=c(0,0,0,0), omd=c(0,1,0,1), las=1, pty="s")
+par(mar=c(2.5,1.5,1.5,0.8))
+plot(NA, xlim = range(x), ylim = c(0.05, max(y)), xlab = "", ylab = "", 
+		 main = "CROCKER plot", frame.plot = TRUE, axes = TRUE, xaxs="i", yaxs="i", las = 1)
+.filled.contour(x=x, y=y, z=z, levels=unique(as.vector(z)), 
+								col = rev(viridis::rocket(length(unique(as.vector(z))))))
+legend("bottomright", legend = c(0:2), fill = rev(viridis::rocket(4)), horiz = TRUE, 
+			 x.intersp = 0.50, y.intersp = 1.8)
+
+xy <- cbind(c(12,14,22,33,44,57), c(0.23, 0.23, 0.26, 0.18, 0.21, 0.14))
+points(xy, col = viridis::viridis(10)[6], pch = 4, lwd = 2.5, cex = 2.0)
+
+par(mar=c(2.5,1.5,1.5,1.8))
+for (i in seq(nrow(xy))){
+	local_tau <- xy[i,1]
+	local_eps <- xy[i,2]
+	dx <- dms(time[local_tau])$dX
+	st <- simplextree::rips(dx, eps = eps, dim = 2, filtered = TRUE)
+	st_sim <- st$simplices
+	st_wei <- st$weights
+
+	s_col_bg <- straverse(level_order(st), function(simplex){ 
+		fi_idx <- match(list(simplex), st_sim)
+		ifelse(st_wei[fi_idx] > local_eps, 
+					 adjustcolor("black", alpha.f = 0.01), 
+					 adjustcolor("white", alpha.f = 0))
+		# if (st_wei[fi_idx] > local_eps){ return(adjustcolor("black", alpha.f = 0.01)) }
+		#c(adjustcolor("red", alpha.f = 1.0), "darkblue", "orange")[length(simplex)]
+	})
+	plot(st, coords = dms(time[local_tau])$X, color_pal = s_col_bg, maximal = TRUE, text_opt=c(labels=NA), 
+			 vertex.opt = c(cex=0.5))
+	s_col <- straverse(level_order(st), function(simplex){ 
+		fi_idx <- match(list(simplex), st_sim) 
+		ifelse(st_wei[fi_idx] > local_eps, 
+					 adjustcolor("white", alpha.f = 0),
+					 c(adjustcolor("red", alpha.f = 1.0), "darkblue", "orange")[length(simplex)]
+		)
+		# if (st_wei[fi_idx] > local_eps){ return(adjustcolor("black", alpha.f = 0.01)) }
+	})
+	plot(st, coords = dms(time[local_tau])$X, color_pal = s_col, maximal = TRUE, text_opt=c(labels=NA), 
+			 add = TRUE, vertex_opt = c(cex=1.35))
+	title(sub = sprintf("Time: %d, eps=%g", local_tau, local_eps),)
+}
+```
+
+
+Vineyards example
+```{r}
+## Vineyards schedules 
+S_tr <- lapply(seq(length(filt_simplices)-1L), function(i){
+	s0 <- str_to_simplex(filt_simplices[[i]]$simplices)
+	s1 <- str_to_simplex(filt_simplices[[i+1]]$simplices)
+	f0 <- filt_simplices[[i]]$weights
+	f1 <- filt_simplices[[i+1]]$weights
+	print(i)
+	phtools::vineyards_schedule(s0, s1, f0, f1)
+})
+
+D <- with(list(x=filt_simplices[[1]]), {
+	D <- boundary_matrix(str_to_simplex(x$simplices))
+	dimnames(D) <- list(x$simplices, x$simplices)
+	return(D)
+})
+V <- diag(ncol(D))
+# RV <- pbgrad::reduce(D)
+
+idx <- which(D != 0, arr.ind = TRUE)
+Dm <- phtools::psp_matrix(dim(D), i = idx[,1]-1L, j = idx[,2]-1L, x = D[idx] %% 2)
+idx <- which(V != 0, arr.ind = TRUE)
+Vm <- phtools::psp_matrix(dim(V), i = idx[,1]-1L, j = idx[,2]-1L, x = V[idx] %% 2)
+
+phtools:::test_reduce2(Dm$matrix$as_XPtr(), Vm$matrix$as_XPtr())
+Dm$as.Matrix()
+Vm$as.Matrix()
+
+S_tr <- readRDS("~/phtools/S_tr.rds")
+S <- do.call(cbind, S_tr)
+S <- apply(S, 2, min)-1L
+
+## Get schedule costs
+n_ops <- vector("integer", length = length(S))
+status_costs <- c(2,2,0,1,2,0,2,0,1)
+ti <<- 1L
+phtools:::simulate_vineyard_cpp(R = Dm$matrix$as_XPtr(), Vm$matrix$as_XPtr(), S, f = function(s){
+	n_ops[ti] <<- status_costs[s]
+	ti <<- ti + 1L
+	
+	
+	# pbgrad::extract_pairs(RV$R, values = x$weights, essential = FALSE, collapse = TRUE)
+})
+
+pbgrad:::is_reduced(Dm$as.Matrix())
+```
+
+```{r}
+is_valid_filtration <- function(simplices){
+	all_faces <- sapply(seq(2, length(simplices)), function(i){
+		if (length(simplices[[i]]) == 1){ return(TRUE) }
+		match_idx <- combn(simplices[[i]], length(simplices[[i]])-1L, 
+											 FUN = function(face) match(list(face), simplices))
+		if (any(is.na(match_idx))){ return(FALSE) }
+		return(all(match_idx < i))
+	})
+	all(all_faces)
+}
+is_valid_filtration(unname(str_to_simplex(colnames(D))))
+```
+
+
+Move costs
+```{r}
+## Move schedules
+S_mv <- lapply(seq(length(filt_simplices)-1L), function(i){
+	p <- seq_along(filt_simplices[[i]]$simplices)
+	q <- match(filt_simplices[[i+1]]$simplices, filt_simplices[[i]]$simplices)
+	lcs <- phtools::perm_lcs(p,q)
+	phtools::greedy_min_cross(p = p, q = q, lcs = lcs)
+})
+# saveRDS(S_mv, "S_mv.rds")
+S_mv <- readRDS("~/phtools/S_mv.rds")
+S <- do.call(cbind, S_mv)
+
+
+D <- with(list(x=filt_simplices[[1]]), {
+	D <- boundary_matrix(str_to_simplex(x$simplices))
+	dimnames(D) <- list(x$simplices, x$simplices)
+	return(D)
+})
+RV <- pbgrad::reduce(D)
+
+p <- str_to_simplex(colnames(D)) 
+is_valid <- vector(mode = "logical", length = ncol(S))
+for (i in seq(ncol(S))){
+	p <- permute_move(p, S[1,i], S[2,i])
+	is_valid[i] <- is_valid_filtration(p)
+}
+
+
+R <- RV$R
+V <- RV$V
+B <- as.matrix(D)
+costs <- c()
+pb <- txtProgressBar(min = 0, max = ncol(S), style = 3)
+for (i in seq(ncol(S))){
+	if (i == 11){
+		#stop("bad2")
+		#rv <- sparsify_rv(R, V)
+		# all((((B %*% V) - R) %% 2) == 0)
+	}
+	rv <- move_decomp(R = R, V = V, i = S[1,i], j = S[2,i])
+	B <- permute_move(B, i = S[1,i], j = S[2,i])
+	is_reduced <- pbgrad:::is_reduced(rv$R)
+	is_tri <- Matrix::isTriangular(rv$V)
+	is_decomp <- all((((B %*% rv$V) - rv$R) %% 2) == 0)
+	same_filt <- all(colnames(B) == colnames(rv$R))
+	if (!is_reduced || !is_tri || !is_decomp || !same_filt){
+		print(i)
+		# is_valid_filtration(str_to_simplex(colnames(B)))
+		stop("bad")
+		rv <- pbgrad::reduce(B)
+		# lows <- apply(rv$R, 2, phtools:::low_entry)
+		# table_lows <- table(lows)[-1]
+		# while (any(table_lows > 1)){
+		# 	low_index <- as.integer(names(table_lows[table_lows > 1]))[1]
+		# 	col_to_reduce <- sort(which(lows == low_index))
+		# 	ii <- col_to_reduce[1]
+		# 	jj <- col_to_reduce[2]
+		# 	rv$R[,jj] <- (rv$R[,jj] + rv$R[,ii]) %% 2
+		# 	rv$V[,jj] <- (rv$V[,jj] + rv$V[,ii]) %% 2
+		# 	lows <- apply(rv$R, 2, phtools:::low_entry)
+		# 	table_lows <- table(lows)[-1]
+		# }
+		is_reduced <- pbgrad:::is_reduced(rv$R)
+		is_tri <- Matrix::isTriangular(rv$V)
+		is_decomp <- all((((B %*% rv$V) - rv$R) %% 2) == 0)
+		if (!is_reduced || !is_tri || !is_decomp){
+			stop("not good")
+			# bad_indices <- which(wut != 0, arr.ind = TRUE)
+		}
+		# rvd <- list(R=rv$R, V=rv$V, P=pbgrad::pivots(rv$R))
+		# E <- which(apply(rv$R, 2, function(x) all(x == 0)))
+		# E <- setdiff(E, pbgrad::pivots(rv$R)[,1])
+		# rvd$E <- E
+		# cost_one <- rv$m
+		# rv <- pbgrad::reduce(rvd)
+		# rv$m <- rv$nc + cost_one
+		# is_reduced <- pbgrad:::is_reduced(rv$R)
+		# is_tri <- Matrix::isTriangular(rv$V)
+		# is_decomp <- all((((D %*% rv$V) - rv$R) %% 2) == 0)
+		# if (!is_reduced || !is_tri || !is_decomp){
+		# 	stop("bad")
+		# }
+	}
+	R <- rv$R
+	V <- rv$V
+	costs <- c(costs, rv$m)
+	setTxtProgressBar(pb, value = i)
+}
+close(pb)
+
+
+any(apply(R, 2, pbgrad:::which.highest_nz) %in% E )
+```
+
+```{r}
+## Move schedules
+S_mv1 <- lapply(seq(length(filt_simplices)-1L), function(i){
+	fi0_dim <- sapply(unname(str_to_simplex(filt_simplices[[i]]$simplices)), length)
+	fi1_dim <- sapply(unname(str_to_simplex(filt_simplices[[i+1L]]$simplices)), length)
+	fs0 <- filt_simplices[[i]]$simplices[fi0_dim == 2]
+	fs1 <- filt_simplices[[i+1]]$simplices[fi1_dim == 2]
+	p <- seq_along(fs0)
+	q <- match(fs1, fs0)
+	lcs <- phtools::perm_lcs(p,q)
+	phtools::greedy_min_cross(p = p, q = q, lcs = lcs)
+})
+
+S_mv2 <- lapply(seq(length(filt_simplices)-1L), function(i){
+	fi0_dim <- sapply(unname(str_to_simplex(filt_simplices[[i]]$simplices)), length)
+	fi1_dim <- sapply(unname(str_to_simplex(filt_simplices[[i+1L]]$simplices)), length)
+	fs0 <- filt_simplices[[i]]$simplices[fi0_dim == 3]
+	fs1 <- filt_simplices[[i+1]]$simplices[fi1_dim == 3]
+	p <- seq_along(fs0)
+	q <- match(fs1, fs0)
+	lcs <- phtools::perm_lcs(p,q)
+	phtools::greedy_min_cross(p = p, q = q, lcs = lcs)
+})
+
+D <- with(list(x=filt_simplices[[1]]), {
+	D <- boundary_matrix(str_to_simplex(x$simplices))
+	dimnames(D) <- list(x$simplices, x$simplices)
+	return(D)
+})
+RV <- pbgrad::reduce(D)
+
+si_dim <- sapply(unname(str_to_simplex(colnames(RV$R))), length)
+R0 <- RV$R[si_dim == 0, si_dim == 1]
+R1 <- RV$R[si_dim == 1, si_dim == 2]
+R2 <- RV$R[si_dim == 2, si_dim == 3]
+R3 <- RV$R[si_dim == 3, si_dim == 4]
+
+V0 <- RV$V[si_dim == 1, si_dim == 1]
+V1 <- RV$V[si_dim == 2, si_dim == 2]
+V2 <- RV$V[si_dim == 3, si_dim == 3]
+V3 <- RV$R[si_dim == 4, si_dim == 4]
+
+## 
+S1 <- do.call(cbind, S_mv1)
+S2 <- do.call(cbind, S_mv2)
+rv <- list(R=list(R1,R2), V=list(V1,V2))
+
+move_costs <- list()
+
+for (i in seq_along(S_mv1)){
+	
+	## Attempt the (selective) clearing optimization
+	# pivots_ij <- pbgrad::pivots(R2)
+	# v1_nz <- apply(V1[,pivots_ij[,1], drop=FALSE], 2, function(x) sum(x != 0))
+	# r2_nz <- apply(R2[,pivots_ij[,2],drop=FALSE], 2, function(x) sum(x != 0))
+	# sel_cols <- r2_nz < v1_nz
+	# V1[,pivots_ij[sel_cols,1]] <- R2[,pivots_ij[sel_cols,2]]
+	# V1_tmp <- sparsify_rv(R2, V1)$V
+	# if (sum(V1_tmp != 0) < sum(V1 != 0)){
+	# 	V1 <- V1_tmp
+	# }
+	
+	## Permute the 1-simplices
+	rv1 <- list(R=list(R1,R2), V=list(V1,V2))
+	costs_1 <- c()
+	cs1 <- S_mv1[[i]]
+	for (ii in seq(ncol(cs1))){
+		si <- cs1[1,ii]; ti <- cs1[2,ii] 
+		if (si < ti){
+			rv1 <- phtools::move_right(R = rv1$R, V = rv1$V, i=si, j=ti, dims = "local")
+		} else {
+			rv1 <- phtools::move_left(R = rv1$R, V = rv1$V, i=si, j=ti, dims = "local")
+		}
+		costs_1 <- c(costs_1, rv1$m)
+	}
+	
+	## Assign R2 
+	R2 <- rv1$R[[2]]
+	V2 <- rv1$V[[2]]
+	
+	## Permute the 2-simplices
+	rv2 <- list(R=list(R2,R3), V=list(V2,V3))
+	costs_2 <- c()
+	cs2 <- S_mv2[[i]]
+	for (ii in seq(ncol(cs2))){
+		si <- cs2[1,ii]; ti <- cs2[2,ii] 
+		if (si < ti){
+			rv2 <- phtools::move_right(R = rv2$R, V = rv2$V, i=si, j=ti, dims = "local")
+		} else {
+			rv2 <- phtools::move_left(R = rv2$R, V = rv2$V, i=si, j=ti, dims = "local")
+		}
+		costs_2 <- c(costs_2, rv2$m)
+	}
+
+	R1 <- rv1$R[[1]]
+	R2 <- rv2$R[[1]]
+	R3 <- rv2$R[[2]]
+	V1 <- rv1$V[[1]]
+	V2 <- rv2$V[[1]]
+	V3 <- rv2$V[[2]]
+	print(i)
+	move_costs[[i]] <- list(costs_1, costs_2)
+}
+
+```
+
+
+```{r}
+rips_cost <- sapply(time[-1], function(tau){
+	as.integer(capture.output(invisible(TDAstats::calculate_homology(dms(tau)$dX, threshold = 2*eps)))) 
+})
+
+```
+
+
+```{r Performance comp.}
+# saveRDS(n_ops, file = "tr_costs_boids.rds")
+# saveRDS(move_costs, file = "mv_costs_boids.rds")
+
+mc <- unlist(lapply(move_costs, function(x) sum(c(x[[1]], x[[2]]))))
+
+lines(x = cumsum(c(0, inv_counts)), y = log10(cumsum(c(RV$nc, rips_cost))), col = "green")
+
+inv_counts <- sapply(seq(length(filt_simplices)-1L), function(i){
+	idx <- match(filt_simplices[[i+1]]$simplices, filt_simplices[[i]]$simplices)
+	phtools:::inversion_count(idx)
+})
+
+idx <- seq(1, sum(inv_counts), by = 1000)
+vineyards_costs <- cumsum(c(RV$nc, n_ops))[idx]
+move_costs <- cumsum(c(RV$nc, mc))
+
+red_costs <- sapply(filt_simplices, function(x){
+	D <- boundary_matrix(str_to_simplex(x$simplices))
+	dimnames(D) <- list(x$simplices, x$simplices)
+	pbgrad::reduce(D)$nc
+})
+reduction_costs <- cumsum(red_costs)
+
+dev.off()
+par(mar=c(2.8, 3.4, 3.5, 0.1))
+layout(matrix(1:2, ncol = 2))
+plot(x = idx, y = log10(vineyards_costs), type = "l", col = "blue", 
+		 xlim = c(0, sum(inv_counts)), 
+		 ylim = c(log10(RV$nc), log10(max(vineyards_costs))), axes = FALSE, 
+		 xlab = "", ylab = "", main = "Dynamic Persistence cost")
+		 # xlab = "Time step", ylab = "Column operations (cum., log-scale)", 
+		 # main = "Dynamic Persistence cost")
+mtext("CROCKER plot generation")
+grid()
+box(which = "outer", lwd = 2)
+
+lines(x = cumsum(c(0, inv_counts)), y = log10(move_costs), col = "orange")
+points(x = cumsum(c(0, inv_counts)), y = log10(move_costs), pch = 4, cex = 0.5, col = "orange")
+lines(x = cumsum(c(0, inv_counts)), y = log10(reduction_costs), col = "black")
+points(x = cumsum(c(0, inv_counts)), y = log10(reduction_costs), pch = 4, cex = 0.5)
+
+ticks <- round(cumsum(inv_counts), digits = -4)
+ticks_small <- c(0, ticks[floor(seq(1, length(ticks), length.out = 10))])
+x_ticks <- formatC(ticks_small, format = "e", digits = 1, flag = "-", drop0trailing = TRUE, 
+									 zero.print = "0", replace.zero = TRUE)
+y_ticks <- parse(text=sprintf("10^%.2g", axTicks(2)))
+axis(side = 1, at = ticks_small, labels = x_ticks, cex.axis = 0.80, padj = -0.9)
+axis(side = 2, at = axTicks(2), labels = y_ticks, las = 1, hadj = 0.35, tick = FALSE, padj = 0.4)
+
+legend("bottomright", 
+			 legend = c("Vineyards", "pHcol (60x)", "Scheduling (60x)"), 
+			 col = c("blue", "black", "orange"), border = TRUE, lwd = 2.8, cex = 0.50, 
+			 y.intersp = 1.05, x.intersp = 0.70, inset = c(0.01, 0.01), xjust = 1)
+mtext(side=2, text="Column operations (cum., log-scale)", line = 1.80)
+mtext(side=1, text="Time index", line = 1.65)
+
+k_dist <- inv_counts/choose(length(filt_simplices[[1]]$simplices),2)
+hist(k_dist, breaks = 20, prob = TRUE, xlab = "", ylab = "", 
+		 main = "Kendall distance distribution", axes = FALSE)
+axis(side = 1, at = axTicks(1), labels = axTicks(1), cex.axis = 0.80, padj = -0.9)
+axis(side = 2, at = axTicks(2), labels = axTicks(2), las = 1, hadj = 0.85, tick = TRUE, padj = 0.4)
+mtext("(between adjacent filtrations)")
+mtext(side=2, text="Density", line = 2.00)
+mtext(side=1, text="Kendall Distance", line = 1.65)
+lines(density(k_dist, adjust = 2), col = "red")
+
+# dev.off()
+# fig_height <- 674*0.14
+# fig_width <- 426*0.33
+# height_inches <- grid::convertUnit(grid::unit(3.1*fig_height, "pt"), unitTo = "inches")
+# width_inches <- grid::convertUnit(grid::unit(3.1*fig_width, "pt"), unitTo = "inches")
+# tiff("boid_cost.tiff", units="in", width=width_inches, height=height_inches, res=300)
+# par(mar=c(2.7, 3.4, 1.5, 0.1))
+# plot(log10(cumsum(phcol_costs)), type = "l", main = "", axes = FALSE, ylab = "", xlab = "", lwd = 1.2)
+# mtext(side=1, text="Time index", line =1.55)
+# mtext(side=2, text="Column operations (cum., log-scale)", line=2.10)
+
+```
+
+
+```{r}
+rips <- pbgrad::r_geometric_complex(10, 0.25, dim = 2, filtered = TRUE)
+D <- pbgrad::boundary_matrix(rips)
+RV <- pbgrad::reduce(D)
+
+tri_idx <- which(sapply(rips$simplices, length) == 3)
+
+for (t_idx in tri_idx){
+	ii <- t_idx
+	jj <- t_idx - 6L
+	rv <- move_left(R = RV$R, V = RV$V, i = ii, j = jj)
+	is_tri <- Matrix::isTriangular(rv$V)
+	B <- permute_move(D, ii, jj)
+	is_decomp <- all((((B %*% rv$V) - rv$R) %% 2) == 0)
+	if (!all(c(pbgrad::is_reduced(rv$R), is_tri, is_decomp))){
+		stop("bad")
+	}
+}
+
+
+sparsify_rv <- function(R, V){
+	pivots_ij <- pbgrad::pivots(R)
+	# all(R[,pivots_ij[,1]] == 0) # TRUE 
+	# sum(R[,pivots_ij[,2]] != 0)
+	V[,pivots_ij[,1]] <- R[,pivots_ij[,2]]
+	return(list(R=R,V=V))
+}
+
+```
+
+
+```{r}
+## filler.contour probably looks the best
+
+# ## contourPlot
+# library(contourPlot)
+# x <- as.vector(time[col(bc1)])
+# y <- as.vector(eps_values[row(bc1)])
+# z <- as.vector(bc1)
+# #level_col <- c(adjustcolor("black", alpha.f = 0.20), "yellow", "orange", "red")
+# contourPlot(x,y,z, main = "CROCKER-plot", breaks = unique(as.vector(bc1)), nx = 250)
+# 						#col = level_col, axis = FALSE)
+# x <- as.vector(time[col(bc0)])
+# y <- as.vector(eps_values[row(bc0)])
+# z <- as.vector(bc0)
+# contourPlot(x,y,z, main = "CROCKER-plot")
+# filled.contour(time,eps_values,t(bc1))
+# filled.contour(time,eps_values,t(bc0), ylim = c(0, 0.25))
+# phtools::move_decomp()
+# radii <- sapply(seq(0,1, length.out = 20), function(tau){
+# 	dx <- dms(tau)$dX
+# 	simplextree::enclosing_radius(dx)
+# })
+# 
+# er <- max(radii) 
+# 
+# S <- sapply(seq(0,1, length.out = 20), function(tau){
+# 	dx <- dms(tau)$dX
+# 	simplextree::rips(dx, eps = er, dim = 2)
+# 	unlist(simplex_to_str(straverse(preorder(S[[1]]), identity)))
+# })
+# contour(x = time, y = eps_values, z = t(bc0), ylim = c(0,0.225),drawlabels = FALSE,col = rainbow(10))
+# contour(x = time, y = eps_values, z = t(bc1), levels = seq(0, max(bc1)))
+# lattice::levelplot(t(bc1))
+# contourPlot::contourPlot()
+# match("(3,9)", x$simplices)
+# phtools:::low_entry(RV$R[,143])
+# which(unname(apply(RV$R, 2, phtools:::low_entry)) == 143)
+# filled.contour(,,t(bc1), 
+# 							 levels = unique(as.vector(bc1)), nlevels = length(unique(as.vector(bc1))),
+# 							 ylab = "Rips eps parameter", xlab = "Time step", frame.plot = TRUE, 
+# 							 ylim = c(0.05, 0.30), key.axes = c(0, 1, 2, 3), )
+
+# S <- do.call(cbind, S_tr)
+# n_ops <- vector("integer", length = ncol(S))
+# status_costs <- c(2,2,0,1,2,0,2,0,1)
+# pb <- txtProgressBar(min = 0, max = ncol(S))
+# phtools::simulate_vineyard(R = RV$R, V = RV$V, S = S, f = function(R, V, s, ti){
+# 	n_ops[ti] <<- status_costs[s]
+# 	# setTxtProgressBar(pb, ti)
+# 	print(ti)
+# })
+# close(pb)
+
+```
+

@@ -1,0 +1,16 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+st <- simplextree::simplex_tree(combn(4,2)) %>% expand(k = 2)
+D <- boundary_matrix(as.list(level_order(st)))
+
+## The coboundary matrix is the anti-transpose (transpose across minor diagonal)
+# t(D$matrix[rev(seq(nrow(D$matrix))),rev(seq(nrow(D$matrix)))]) == gclm:::anti_t(as.matrix(D$matrix))
+ri <- seq(nrow(D$matrix))
+ci <- seq(ncol(D$matrix))
+Dco <- t(D$matrix[rev(ri),rev(ci)])
+```

@@ -1,3 +1,11 @@
+**/*.pdf
+**/*.tiff
+**/*.so
+**/*.tmp
+**/*.o
+**/*.html
+**/*.gif 
+
 # History files
 .Rhistory
 .Rapp.history
@@ -37,3 +45,7 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+**/*.csv
+**/*.rds
+**/*.Rdata
