@@ -33,6 +33,13 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 				D2s = D2_psp$matrix$as_XPtr(), V2s = V2_psp$matrix$as_XPtr(), 
 				clearing = TRUE
 			)
+			
+			## Clean entries up 
+			D1_psp$matrix$clean(0)
+			D2_psp$matrix$clean(0)
+			V1_psp$matrix$clean(0)
+			V2_psp$matrix$clean(0)
+			
 			if (missing(output) || output == "RV"){
 				res <- list(R=list(D1_psp, D2_psp), V=list(V1_psp, V2_psp))
 			} else if (out == "RU" || "U"){
@@ -101,10 +108,15 @@ is_reduced <- function(x){
 
 #' Validates reduction decomposition
 #' @export
-validate_decomp <- function(x, D = NULL){
+validate_decomp <- function(x, D = NULL, field = c("mod2", "reals")){
 	stopifnot("fbm_decomp" %in% class(x))
-	stopifnot(all(c("R", "V" %in% names(x))))
+	stopifnot(all(c("R", "V") %in% names(x)))
 	if (!missing(D)){ stopifnot("fbm" %in% class(D)) }
+	if (missing(field) || field == "mod2"){
+		coerce_field <- function(x){ x %% 2L }
+	} else {
+		coerce_field <- identity
+	}
 	is_red <- ifelse(is.list(x$R), all(sapply(x$R, is_reduced)), is_reduced(x$R))
 	is_tri <- function(v) { as.logical(Matrix::isTriangular(v)) }
 	if (is.list(x$V)){
@@ -115,12 +127,16 @@ validate_decomp <- function(x, D = NULL){
 	}
 	if (!missing(D)){
 		if (is.list(D)){
-			stopifnot(length(D) == length(x$V), length(D) == length(x$R))
-			is_psp <- all(sapply(x$V, function(m) "PspMatrix" %in% class(m)))
-			diff <- lapply(seq_along(D), function(i){ x$R[[i]] - D$matrix[[i]] %*% as(x$V[[i]], "sparseMatrix") })
+			stopifnot(length(D$matrix) == length(x$V), length(D$matrix) == length(x$R))
+			# is_psp <- all(sapply(x$V, function(m) "PspMatrix" %in% class(m)))
+			diff <- lapply(seq_along(D), function(i){ 
+				DV <- coerce_field(as(D$matrix[[i]], "sparseMatrix") %*% as(x$V[[i]], "sparseMatrix")) 
+				R <- coerce_field(as(x$R[[i]], "sparseMatrix"))
+				return(coerce_field(R - DV))
+			})
 			is_dec <- sapply(diff, function(d) all(d == 0))
 		} else {
-			diff <- x$R - (D$matrix %*% as(x$V, "sparseMatrix"))
+			diff <- coerce_field(x$R - (as(D$matrix, "sparseMatrix") %*% as(x$V, "sparseMatrix")))
 			is_dec <- all(d == 0)
 		}
 	}

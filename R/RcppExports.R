@@ -16,12 +16,24 @@ simulate_vineyard_cpp <- function(Rs, Vs, schedule, f = NULL) {
     invisible(.Call(`_dart_simulate_vineyard_cpp`, Rs, Vs, schedule, f))
 }
 
+move_schedule_local <- function(r1, v1, r2, v2, schedule, f = NULL) {
+    invisible(.Call(`_dart_move_schedule_local`, r1, v1, r2, v2, schedule, f))
+}
+
 reduce_arma <- function(D, v) {
     .Call(`_dart_reduce_arma`, D, v)
 }
 
 reduce_local_arma <- function(D1, v1, D2, v2, clearing) {
     .Call(`_dart_reduce_local_arma`, D1, v1, D2, v2, clearing)
+}
+
+push_map <- function(x, m, b) {
+    .Call(`_dart_push_map`, x, m, b)
+}
+
+boundary_matrix_fi <- function(filtration, k) {
+    .Call(`_dart_boundary_matrix_fi`, filtration, k)
 }
 
 boundary_matrix_st <- function(stree, k) {
@@ -38,6 +50,10 @@ LIS <- function(a) {
 
 countNumLIS <- function(x) {
     .Call(`_dart_countNumLIS`, x)
+}
+
+inversions <- function(a) {
+    .Call(`_dart_inversions`, a)
 }
 
 inversion_count <- function(iv) {
@@ -68,6 +84,10 @@ interval_cost_rcpp <- function(s, O) {
     .Call(`_dart_interval_cost_rcpp`, s, O)
 }
 
+pairwise_cost <- function(M) {
+    .Call(`_dart_pairwise_cost`, M)
+}
+
 inverse_permutation <- function(p) {
     .Call(`_dart_inverse_permutation`, p)
 }
@@ -90,5 +110,29 @@ unique_numeric <- function(x, eps) {
 
 longest_inc_subseq <- function(X) {
     .Call(`_dart_longest_inc_subseq`, X)
+}
+
+pairwise_segment_intersections <- function(S, L, one_based = FALSE) {
+    .Call(`_dart_pairwise_segment_intersections`, S, L, one_based)
+}
+
+all_segment_intersections <- function(S, one_based = FALSE) {
+    .Call(`_dart_all_segment_intersections`, S, one_based)
+}
+
+bin_break <- function(x, bins) {
+    .Call(`_dart_bin_break`, x, bins)
+}
+
+SearchInStrip <- function(y_b, y_e, b, e, one_based = FALSE) {
+    .Call(`_dart_SearchInStrip`, y_b, y_e, b, e, one_based)
+}
+
+span_intersections <- function(indices, y_b, y_e, b, e, one_based = FALSE) {
+    .Call(`_dart_span_intersections`, indices, y_b, y_e, b, e, one_based)
+}
+
+bentley_ottmann <- function(S) {
+    .Call(`_dart_bentley_ottmann`, S)
 }
 

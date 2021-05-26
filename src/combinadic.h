@@ -176,8 +176,9 @@ namespace dart {
 		}
 	}
 	
-	[[nodiscard]]
-	inline size_t lex_rank(std::span< size_t > s, const size_t n){
+	template< typename T > [[nodiscard]]
+	inline T lex_rank(std::span< T > s, const size_t n){
+		static_assert(std::is_integral_v< T >, "T must be integral type.");
 		switch(s.size()){
 			case 2: 
 				return(lex_rank_2(s[0], s[1], n));
@@ -208,6 +209,114 @@ namespace dart {
 			return(out);
 		}
 	}
+	
+	
+	
 } // namespace dart
+
+template< class Iter, class Index >
+auto cycle_leader_shortcut(Iter t, Index start){
+  auto cur = t[start];
+  while(cur != start){
+    if (cur < start) return false;
+    cur = t[cur];
+  }
+  return true;
+}
+template< class Iter, class Index >
+void reverse_cycle(Iter t, Index start){
+  auto cur = t[start];
+  auto prev = start;
+  while( cur != start ){
+    auto next = t[cur];
+    t[cur] = prev;
+    prev = cur;
+    cur = next;
+  }
+  t[start] = prev;
+}
+
+// O(n log n) in-place permutation inverse algorithm
+// Based on: https://stackoverflow.com/questions/56603153/how-to-invert-a-permutation-represented-by-an-array-in-place
+template< class Iter >
+inline void inverse_permutation_n(Iter first, size_t n){
+  for (size_t i = 0; i != n; ++i){
+		if (cycle_leader_shortcut(first, i)){ reverse_cycle(first, i); };
+  }
+}
+
+
+// Schwartzian transform
+// From: https://devblogs.microsoft.com/oldnewthing/20170106-00/?p=95135
+template<typename Iter, typename UnaryOperation, typename Compare>
+void sort_by_with_caching(Iter first, Iter last, UnaryOperation op, Compare comp) {
+	using Diff = typename std::iterator_traits<Iter>::difference_type;
+	using T = typename std::iterator_traits<Iter>::value_type;
+	using Key = decltype(op(std::declval<T>()));
+	using Pair = std::pair<T, Key>;
+	Diff length = std::distance(first, last);
+	
+	// Construct the "cache" by applying op to every T 
+	std::vector< Pair > pairs;
+	pairs.reserve(length);
+	std::transform(first, last, std::back_inserter(pairs), [&](T& t) { 
+		return std::make_pair(std::move(t), op(t)); 
+	});
+	
+	// Now do the cached comparison-based sort  
+	std::sort(pairs.begin(), pairs.end(), [&](const Pair& a, const Pair& b) { 
+		return comp(a.second, b.second); 
+	});
+	// ... and move the resulting sorted keys back into the range
+	std::transform(pairs.begin(), pairs.end(), first, [](Pair& p) { return std::move(p.first); });
+}
+
+// Applies a permutation (indices) in O(n) time in-place - Essentially performs cycle sort
+// Based on: https://devblogs.microsoft.com/oldnewthing/20170104-00/?p=95115
+template< typename Iter1, typename Iter2 >
+void apply_permutation(Iter1 b, Iter1 e, Iter2 p) {
+	using T = typename std::iterator_traits< Iter1 >::value_type;
+	using Diff = typename std::iterator_traits< Iter2 >::value_type;
+	const Diff length = std::distance(b, e);
+	for (Diff i = 0; i < length; ++i) {
+		Diff current = i;
+		if (i != p[current]) {				// Don't process trivial cycles
+			T element{std::move(b[i])};
+			while (i != p[current]) {   // Sort the current non-trivial cycle
+				Diff next = p[current];
+				b[current] = std::move(b[next]);
+				p[current] = current;
+				current = next;
+			}
+			b[current] = std::move(element);
+			p[current] = current;
+		}
+	}
+}
+
+// Applies the reverse of the permutation given by 'indices' to the range [first, last)
+template< typename Iter1, typename Iter2 >
+void apply_reverse_permutation(Iter1 first, Iter1 last, Iter2 indices) {
+	using T = typename std::iterator_traits<Iter1>::value_type;
+	using Diff = typename std::iterator_traits<Iter2>::value_type;
+	const Diff length = std::distance(first, last);
+	for (Diff i = 0; i < length; ++i) {
+		while (i != indices[i]) {
+			Diff next = indices[i];
+			if (next < 0 || next >= length) { throw std::range_error("Invalid index in permutation"); }
+	    if (next == indices[next]) { throw std::range_error("Not a permutation"); }
+			std::swap(first[i], first[next]);
+			std::swap(indices[i], indices[next]);
+		}
+	}
+}
+
+// Creates and returns the inverse permutation of p 
+template< typename Iter >
+auto inverse_permutation(Iter b, const Iter e) -> std::vector< size_t > {
+	auto a = std::vector< size_t >(b, e);
+	inverse_permutation_n(a.begin(), a.size());
+	return(a);
+}
 
 #endif 

@@ -299,7 +299,7 @@ execute_schedule <- function(R, V, S, f = NULL){
 	if (!missing(f) && !is.null(f)){ stopifnot(is.function(f)) }
 	f_supplied <- (!missing(f) && !is.null(f))
 	for (j in 1L:ncol(S)){
-		new_rv <- phtools::move_decomp(R, V, i = is[1,j], j = is[2,j])
+		new_rv <- move_decomp(R, V, i = S[1,j], j = S[2,j])
 		if (f_supplied){ f(new_rv) }
 		R <- new_rv$R
 		V <- new_rv$V
@@ -484,26 +484,145 @@ greedy_min_cross <- function(p, q, lcs, opt=c("minimize", "maximize"), use_lcs=T
 }
 
 
-greedy_min_cross2 <- function(x, y, lcs, opt=c("minimize", "maximize"), use_lcs=TRUE){
-	x <- sample(1:10)
-	y <- sample(x)
-	lcs <- perm_lcs(x,y)
+#' Greedy Scheduling 
+#' @export
+greedy_min_cross2 <- function(
+	x, y, lcs = perm_lcs(x,y), opt=c("minimize", "maximize"), 
+	strategy=c("target displacement", "pairwise", "local spearman")
+){
 	d <- length(x) - length(lcs)
 	M <- matrix(0L, nrow = 2, ncol = d)
 	cc <- 1L
-	while (any(x != y)){
-		dis <- seq_along(x) - match(x, y)
-		mov_idx <- setdiff(seq_along(x), match(lcs, x))
-		## TODO: don't actually permute  x
-		dis_after_move <- sapply(mov_idx, function(i){ spearman_dist(permute_move(x, i = i, j = i - dis[i]), y) })
-		i <- mov_idx[which.min(dis_after_move)]
-		x <- permute_move(x, i = i, j = i - dis[i])	## TODO: don't actually permute  x
-		lcs <- union(lcs, x[i - dis[i]])
+	Lx <- match(lcs, x)
+	Ly <- match(lcs, y)
+	## Given a displacement vector and a pair (i,j), returns the updated displacement distance form the move 
+	move_cost <- function(i, j, disp_vector){
+		unaffected <- sum(abs(disp_vector[-(i:j)]))
+		dis_change <- ifelse(i < j, sum(abs(disp_vector[(i+1):j]-1L)), sum(abs(disp_vector[j:(i-1)]+1)))
+		change_in_i <- abs(ifelse(i < j, disp_vector[i]+abs(i-j), disp_vector[i]-abs(i-j)))
+		return(dis_change + unaffected + change_in_i)
+	}
+	x_to_move <- setdiff(x, lcs)
+	pos_in_y <- match(x_to_move, y)
+	while(any(x != y)){
+		pos_in_x <- match(x_to_move, x)
+		matched_y <- findInterval(pos_in_y, Ly)
+		mr <- findInterval(pos_in_x, Lx) < matched_y
+		lower_bounds <- matched_y
+		targets <- sapply(seq_along(mr), function(ii){ ifelse(mr[ii], Lx[lower_bounds[ii]], Lx[lower_bounds[ii]+1L]) })
+		moves <- rbind(pos_in_x, targets)
+		
+		## Pick strategy heuristic 
+		if (!missing(strategy)){
+			stopifnot(is.character(strategy))
+			strat_num <- agrep(strategy, c("target displacement", "pairwise", "local spearman"))
+		} else {
+			strat_num <- 1
+		}
+		stopifnot(length(strat_num) > 0, strat_num %in% 1:3)
+		
+		## Compute move costs 
+		if (strat_num == 1){
+			mc <- local({
+				displacement <- seq_along(x) - match(x, y)
+				apply(moves, 2, function(m){ move_cost(m[1], m[2], displacement) })
+			})
+		} else if (strat_num == 2){
+			mc <- pairwise_cost(moves)
+			# mc <- local({
+			# 	sapply(1:ncol(moves), function(i){ dart:::interval_cost_rcpp(moves[,i], moves[,-i]) })
+			# })
+		} else {
+			mc <- apply(moves, 2, function(m){
+	    	spearman_dist(x, permute_move(x, i = m[1], j = m[2]))
+			})
+		}
+		
+		## Choose greedily based on heuristic cost
+		greedy_move <- ifelse(missing(opt) || opt == "minimize", which.min(mc), which.max(mc))
+		i <- moves[1,greedy_move]
+		j <- moves[2,greedy_move]
+		
+		## Perform the move, update the relevent variables
+		x <- permute_move(x, i = i, j = j)
+		lcs <- union(lcs, x[j])
 		lcs <- lcs[order(match(lcs, x))]
-		M[,cc] <- c(i, i - dis[i])
+		Lx <- match(lcs, x)
+		Ly <- match(lcs, y)
+		
+		## Remove moved symbol 
+		remove_idx <- match(x[j], x_to_move)
+		x_to_move <- x_to_move[-remove_idx]
+		pos_in_y <- pos_in_y[-remove_idx]
+		
+		lcs_is_ordered <- all(order(Lx) == order(Ly))
+		stopifnot(lcs_is_ordered)
+		M[,cc] <- c(i, j)
 		cc <- cc + 1L
 	}
+	return(M)
 }
+	
+	# # stopifnot(length(intersect(J, Ly)) == 0L)
+		# for (ii in seq_along(x_to_move)){
+		# 	k <- findInterval(pos_in_y[ii], Ly) # match(max(Ly[Ly < J[ii]]), Ly)
+		# 	l <- k+1
+		# 	ifelse(mr[ii], Lx[k], Lx[l])
+		# 	## [k,l) if mr[ii] = TRUE  
+		# 	# if (mr[ii]){
+		# 	# 	possible_idx <- seq(Lx[k], ifelse(l > length(Lx), Lx[k], Lx[l]-1))
+		# 	# } else {
+		# 	# 	possible_idx <- seq(ifelse(k == 0, Lx[l], Lx[k]+1), Lx[l])
+		# 	# }
+		# 	print(possible_idx)
+		# }
+	# move_cost <- function(i, A){
+	# 	j <- i - dis[i]
+	# 	unaffected <- sum(abs(dis[-(i:j)]))
+	# 	dis_change <- ifelse(dis[i] < 0, sum(abs(dis[(i+1):j]-1L)), sum(abs(dis[j:(i-1)]+1)))
+	# 	return(dis_change + unaffected)
+	# }
+	# # xx <<- x
+	# while (any(x != y)){
+	# 	## Form displacement vector
+	# 	dis <- seq_along(x) - match(x, y)
+	# 	move_idx <- setdiff(seq_along(x), match(lcs, x))
+	# 	dis_after_move <- sapply(move_idx, function(i){ move_cost(i, dis) })
+	# 	
+	# 	lcs_idx_y <- match(lcs, y)
+	# 	valid_moves <- sapply(move_idx, function(mi){
+	# 		# bin0 <- findInterval(match(x[mi], y), lcs_idx_y)
+	# 		# bin1 <- findInterval(mi - dis[mi], lcs_idx_y)
+	# 		if (dis[mi] == 0){ return(TRUE) }
+	# 		## Moving left
+	# 		if (dis[mi] > 0){
+	# 			## Find the LCS bin where the displaced symbol would go in x
+	# 			bin_x <- findInterval(mi - dis[mi], match(lcs, x), left.open = TRUE)
+	# 			## Find the LCS bin where the symbol should be in y
+	# 			bin_y <- findInterval(match(x[mi], y), match(lcs, y), left.open = TRUE)
+	# 		} else {
+	# 			bin_x <- findInterval(mi - dis[mi], match(lcs, x), left.open = FALSE)
+	# 			## Find the LCS bin where the symbol should be in y
+	# 			bin_y <- findInterval(match(x[mi], y), match(lcs, y), left.open = FALSE)
+	# 		}
+	# 		return(bin_x == bin_y)
+	# 	})
+	# 	i <- move_idx[valid_moves][which.min(dis_after_move[valid_moves])]
+	# 	
+	# 	# dis_after_move <- sapply(move_idx, function(i){ spearman_dist(permute_move(x, i = i, j = i - dis[i]), y) })
+	# 	# i <- move_idx[which.min(dis_after_move)]
+	# 	x <- permute_move(x, i = i, j = i - dis[i])
+	# 	lcs <- union(lcs, x[i - dis[i]])
+	# 	print(order(match(lcs, y)) == order(match(lcs, x)))
+	# 	lcs <- lcs[order(match(lcs, x))]
+	# 	M[,cc] <- c(i, i - dis[i])
+	# 	cc <- cc + 1L
+	# }
+	
+	# lcs_idx <- match(lcs, y)
+	# i - dis[i]
+	# 
+# }
 
 move_sequence_recursive <- function(symbols, source, target, lcs, vn, moves = matrix(0L, nrow = 2, ncol = 0), ordered=FALSE, rule = "all"){
 	if (all(source == target)){ 
@@ -573,3 +692,75 @@ move_sequence <- function(symbols, s, t, lcs, ordered=FALSE, rule="all"){
 	res <- Filter(function(x) !is.null(x), res)
 	return(res)
 }
+
+
+
+# greedy_min_cross2 <- function(
+# 	x, y, lcs = perm_lcs(x,y), opt=c("minimize", "maximize"), 
+# 	strategy=c("target displacement", "pairwise", "local spearman")
+# ){
+# 	d <- length(x) - length(lcs)
+# 	M <- matrix(0L, nrow = 2, ncol = d)
+# 	cc <- 1L
+# 	Lx <- match(lcs, x)
+# 	Ly <- match(lcs, y)
+# 	## Given a displacement vector and a pair (i,j), returns the updated displacement distance form the move 
+# 	move_cost <- function(i, j, disp_vector){
+# 		unaffected <- sum(abs(disp_vector[-(i:j)]))
+# 		dis_change <- ifelse(i < j, sum(abs(disp_vector[(i+1):j]-1L)), sum(abs(disp_vector[j:(i-1)]+1)))
+# 		change_in_i <- abs(ifelse(i < j, disp_vector[i]+abs(i-j), disp_vector[i]-abs(i-j)))
+# 		return(dis_change + unaffected + change_in_i)
+# 	}
+# 	while(any(x != y)){
+# 		x_to_move <- setdiff(x, lcs)
+# 		pos_in_x <- match(x_to_move, x)
+# 		pos_in_y <- match(x_to_move, y)
+# 		mr <- findInterval(pos_in_x, Lx) < findInterval(pos_in_y, Ly)
+# 		lower_bounds <- findInterval(pos_in_y, Ly)
+# 		targets <- sapply(seq_along(mr), function(ii){ ifelse(mr[ii], Lx[lower_bounds[ii]], Lx[lower_bounds[ii]+1L]) })
+# 		moves <- rbind(pos_in_x, targets)
+# 		
+# 		## Pick strategy heuristic 
+# 		if (!missing(strategy)){
+# 			stopifnot(is.character(strategy))
+# 			strat_num <- agrep(strategy, c("target displacement", "pairwise", "local spearman"))
+# 		} else {
+# 			strat_num <- 1
+# 		}
+# 		stopifnot(length(strat_num) > 0, strat_num %in% 1:3)
+# 		
+# 		## Compute move costs 
+# 		if (strat_num == 1){
+# 			mc <- local({
+# 				displacement <- seq_along(x) - match(x, y)
+# 				apply(moves, 2, function(m){ move_cost(m[1], m[2], displacement) })
+# 			})
+# 		} else if (strat_num == 2){
+# 			mc <- local({
+# 				sapply(1:ncol(moves), function(i){ dart:::interval_cost_rcpp(moves[,i], moves[,-i]) })
+# 			})
+# 		} else {
+# 			mc <- apply(moves, 2, function(m){
+# 	    	spearman_dist(x, permute_move(x, i = m[1], j = m[2]))
+# 			})
+# 		}
+# 		# mc <- apply(moves, 2, function(m){ x[m[1]] })
+# 		
+# 		## Choose greedily based on heuristic cost
+# 		greedy_move <- ifelse(missing(opt) || opt == "minimize", which.min(mc), which.max(mc))
+# 		i <- moves[1,greedy_move]
+# 		j <- moves[2,greedy_move]
+# 		
+# 		## Perform the move, update the relevent variables
+# 		x <- permute_move(x, i = i, j = j)
+# 		lcs <- union(lcs, x[j])
+# 		lcs <- lcs[order(match(lcs, x))]
+# 		Lx <- match(lcs, x)
+# 		Ly <- match(lcs, y)
+# 		lcs_is_ordered <- all(order(Lx) == order(Ly))
+# 		stopifnot(lcs_is_ordered)
+# 		M[,cc] <- c(i, j)
+# 		cc <- cc + 1L
+# 	}
+# 	return(M)
+# }

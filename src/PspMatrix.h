@@ -181,9 +181,11 @@ public:
 		for (size_t j = 0; j < n_cols(); ++j){
 			vector< entry_t >& v = *columns[j];
 			// TODO: fix this
+			// Search for the a non-zero entry in row 'r' in O(log(n)) time 
 			auto el = std::lower_bound(std::begin(v), std::end(v), r, [this](entry_t& e, size_t index){
 				return(otc[e.first] < index);
 			});
+			// If not found, continue to the next column 
 			if (el == std::end(v) || otc[el->first] != r){
 				continue; 
 			} else {

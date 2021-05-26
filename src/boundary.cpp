@@ -1,14 +1,79 @@
 #include <Rcpp.h>
 using namespace Rcpp;
 
-// [[Rcpp::depends(simplextree)]]
-#include "simplextree.h"
-#include "utility/combinations.h"
-#include "utility/discrete.h"
-#include "combinadic.h"
-#include <tuple> 
-#include <cstdint>
+#include "implicit_filtration.h"
 
+
+// Repeatedly appends whatever is in 'data' (count-1) times
+// From: https://stackoverflow.com/questions/31389846/initializing-stdvector-with-a-repeating-pattern
+template<typename Container>
+void repeat_pattern(Container& data, std::size_t count) {
+  auto pattern_size = data.size();
+  if(count == 0 or pattern_size == 0) {
+    return;
+  }
+  data.resize(pattern_size * count);
+  const auto pbeg = data.begin();
+  const auto pend = std::next(pbeg, pattern_size);
+  auto it = std::next(data.begin(), pattern_size);
+  for(std::size_t k = 1; k < count; ++k) {
+    std::copy(pbeg, pend, it);
+    std::advance(it, pattern_size);
+  }
+}
+
+// [[Rcpp::export]]
+S4 boundary_matrix_fi(SEXP filtration, const size_t k) {
+	XPtr< ImplicitFiltration > fi_ptr(filtration);
+	ImplicitFiltration& fi = *fi_ptr;
+	
+	// Prepare sparse matrix inputs 
+	const auto nb = fi.n_simplexes.size() <= k ? 0 : fi.n_simplexes.at(k)*(k+1);
+	vector< size_t > i, j;
+	vector< int > x; 
+	i.reserve(nb); j.reserve(nb); x.reserve(nb);
+	
+	// Apply boundary operator to every k-simplex
+	if (k > 0){
+		auto x_out = std::back_inserter(x);
+		auto i_out = std::back_inserter(i);
+		auto j_out = std::back_inserter(j);
+		for (size_t ii = 0, jj = 0; ii < fi.m; ++ii){
+			if (fi.dims[ii] == k){
+				fi.boundary(ii, true, i_out);	
+				std::fill_n(j_out, k+1, jj++);
+			}
+		}
+		// The boundary operator data
+		for (size_t c = 0; c < (k+1); ++c){ *x_out++ = c % 2 == 0 ? 1 : -1; }
+		repeat_pattern(x, fi.n_simplexes.at(k));
+	}
+	
+	// Remap row indices to match filtration order 
+	if (k > 0){
+		// f: (shortlex index) -> (filtration index)
+		auto lex_to_full = inverse_permutation(fi.indexes.begin(), fi.indexes.end());	
+		const auto offset = k == 1 ? 0 : fi.cum_ns.at(k-2);
+		auto index_map = vector< size_t >();
+		index_map.reserve(fi.n_simplexes.at(k-1));
+		for (size_t i = 0; i < fi.m; ++i){
+			if (fi.dims[i] == (k-1)){
+				index_map.push_back(lex_to_full[i] - offset);
+			}
+		}
+		Rcout << "i: "; for (auto ii: i){ Rcout << ii << ", "; }; Rcout << std::endl; 
+		//std::transform(i.begin(), i.end(), i.begin(), [&index_map](auto ii){ return(index_map.at(ii)); });
+		Rcout << "i: "; for (auto ii: i){ Rcout << ii << ", "; }; Rcout << std::endl; 
+	}
+	
+	// Create the sparse matrix
+	Rcpp::Environment Matrix("package:Matrix"); 
+  Rcpp::Function constructMatrix = Matrix["sparseMatrix"];    
+	auto m_dim = IntegerVector::create(fi.n_simplexes.at(k-1), fi.n_simplexes.at(k));
+	S4 m = constructMatrix(_["i"] = i, _["j"] = j, _["x"] = x, _["index1"] = false, _["dims"] = m_dim);
+	
+	return(m);
+}
 
 // template< typename RandomIter, typename Size, typename OutputIt>
 // void inverse_permutation_n(RandomIter b, Size n, OutputIt out){
@@ -144,7 +209,7 @@ S4 boundary_matrix_st(SEXP stree, const size_t k) {
 	vector< size_t > face_idx;
 	face_idx.reserve(st.n_simplexes.at(k));
 	st::traverse(faces, [&face_idx, nv](node_ptr cn, idx_t depth, simplex_t x){
-		face_idx.push_back(dart::lex_rank(x, nv));
+		face_idx.push_back(dart::lex_rank(std::span{x}, nv));
 		return true; 
 	});
 	
@@ -160,7 +225,7 @@ S4 boundary_matrix_st(SEXP stree, const size_t k) {
 		size_t c = 0; 
 		for_each_combination(s.begin(), s.begin()+k, s.end(), [&face_idx, &jj, &i, &j, &x, &c, k, nv](auto b, auto e){
 			auto sx = simplex_t(b,e);
-			auto face_index = dart::lex_rank(sx, nv);
+			auto face_index = dart::lex_rank(std::span{sx}, nv);
 			auto it = std::lower_bound(face_idx.begin(), face_idx.end(), face_index);
 			i.push_back(std::distance(face_idx.begin(), it));
 			j.push_back(jj);

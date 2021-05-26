@@ -131,6 +131,26 @@ int countNumLIS(std::vector<int> x) {
 }
 
 
+// [[Rcpp::export]]
+IntegerMatrix inversions(const IntegerVector& a){
+	vector< int > A(a.begin(), a.end()); 
+	auto inv = vector< int >();
+	const size_t n = A.size(); 
+	size_t i = 1, j = 0; 
+	while(i < n){
+		j = i; 
+		while(j > 0 && A[j-1] > A[j]){
+			inv.push_back(A[j]);
+			inv.push_back(A[j-1]);
+			std::swap(A[j], A[j-1]);
+			j -= 1; 
+		}
+		i += 1;
+	}
+	IntegerMatrix out(2, inv.size()/2, inv.begin());
+	return(out);
+}
+
 [[nodiscard]]
 size_t count_inversions(std::span< int > a) noexcept {
   std::multiset< int > set { a[0] };

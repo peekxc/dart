@@ -170,8 +170,25 @@ void simulate_vineyard_cpp(SEXP Rs, SEXP Vs, IntegerVector schedule, Nullable< F
 	}
 }
 
-// Rcpp Module exports
+//[[Rcpp::export]]
+void move_schedule_local(SEXP r1, SEXP v1, SEXP r2, SEXP v2, IntegerVector schedule, Nullable< Function > f = R_NilValue){
+	BoolMatrix R1 = BoolMatrix(*Rcpp::XPtr< PspBoolMatrix >(r1)); 
+	BoolMatrix V1 = BoolMatrix(*Rcpp::XPtr< PspBoolMatrix >(v1)); 
+	BoolMatrix R2 = BoolMatrix(*Rcpp::XPtr< PspBoolMatrix >(r2)); 
+	BoolMatrix V2 = BoolMatrix(*Rcpp::XPtr< PspBoolMatrix >(v2)); 
+	if (f.isNotNull()){
+		Function fun(f);
+		move_schedule_local(R1, V1, R2, V2, schedule.begin(), schedule.end(), [&](){
+			// fun(status);
+		});
+	} else {
+		const auto do_nothing = [](size_t status){ return; };
+		move_schedule_local(R1, V1, R2, V2, schedule.begin(), schedule.end(), do_nothing);
+	}
+}
 
+
+// Rcpp Module exports
 SEXP as_XPtr(PspBoolMatrix* M){
   Rcpp::XPtr< PspBoolMatrix > p(M, false);
   return(p);

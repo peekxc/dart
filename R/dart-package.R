@@ -10,6 +10,7 @@
 #' simplex_to_str
 #' @export
 simplex_to_str <- function(x){
+	if (is.null(x) || length(x) == 0){ return(NULL) }
 	to_str <- function(simplex){ sprintf("(%s)",paste0(simplex, collapse=",")) }
 	if (!is.null(dim(x))){
 		return(apply(x, 2, to_str))
@@ -25,6 +26,7 @@ simplex_to_str <- function(x){
 #' @param ... passed to sapply. 
 #' @export
 str_to_simplex <- function(x, ...){
+	if (is.null(x) || length(x) == 0){ return(NULL) }
 	to_simplex <- function(s){ as.integer(strsplit(substring(s, first = 2L, last = nchar(s)-1L), split=",")[[1]]) }
 	sapply(x, to_simplex, ...)
 }

@@ -1,5 +1,9 @@
 #' @title Boundary matrix
 #' @description Constructs filtration boundary matrices
+#' @param x list of simplices.
+#' @param dim dimension of boundary matrix desired
+#' @param labeled whether to add simplex labels to the corresponding matrices.
+#' @param field intended 
 #' @details This function computes and returns the elementary chains associated with a filtered simplicial complex.
 #' The filtration is expected to be given as list of a simplices.  
 #' @export
@@ -12,16 +16,20 @@ boundary_matrix <- function(x, dim="all", labeled=TRUE, field=c("mod2", "integer
 		for (d in dim){
 			f <- do.call(cbind, x[di == d])
 			s <- do.call(cbind, x[di == d+1L])
+			if (is.null(f) && is.null(s)){
+				return(Matrix::Matrix(matrix(0, ncol = 0, nrow = 0), sparse = TRUE))
+			}
 			f_idx <- rankr::rank_comb(x = f, n = nv)
 			m_idx <- do.call(rbind, lapply(seq(ncol(s)), function(i){
 				face_idx <- match(rankr::rank_comb(combn(x = s[,i], d), n = nv), f_idx)
 				cbind(sort(face_idx), i)
 			}))
+			ns <- ifelse(is.null(ncol(s)), 0, ncol(s))
 			M <- Matrix::sparseMatrix(
 				i = m_idx[,1], j = m_idx[,2], 
-				x = rep((-1)^(seq(d+1)-1L), ncol(s)), 
+				x = rep((-1)^(seq(d+1)-1L), ns), 
 				dimnames = list(simplex_to_str(f), simplex_to_str(s)), 
-				dim = c(ncol(f), ncol(s))
+				dim = c(ncol(f), ns)
 			)
 			D[[match(d, dim)]] <- M
 		}

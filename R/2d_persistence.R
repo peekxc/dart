@@ -33,15 +33,20 @@ dual_line_arrangement <- function(x){
 	## Determine bounds of arrangement using intersections
 	L <- cbind(m=A[,1], b= -A[,2])
 	I <- combn(nrow(L),2)
-	L_pts <- do.call(rbind, apply(I, 2, function(ii){
+	a_pts <- apply(I, 2, function(ii){
     i <- ii[1]; j <- ii[2]
     a <- L[i,1]; b <- L[i,2]
     c <- L[j,1]; d <- L[j,2]
     xc <- (b-d)/(c-a)
   	if (xc > 0){ return(c(xc, a*xc + b)) }
   	return(NULL)
-	}))
-	L_pts <- L_pts[!(abs(L_pts[,1]) == Inf | abs(L_pts[,2]) == Inf),,drop=FALSE]
+	})
+	if (!is.null(a_pts)){
+		L_pts <- do.call(rbind, a_pts)
+		L_pts <- L_pts[!(abs(L_pts[,1]) == Inf | abs(L_pts[,2]) == Inf),,drop=FALSE]
+	} else {
+		L_pts <- matrix(0, nrow = 0, ncol = 2)
+	}
 
 	## Compute line arrangement
 	if (nrow(L_pts) == 0){
@@ -220,12 +225,16 @@ compute_anchors <- function(S){
 
 ## projects a series of points in 'x' onto a line given by y = mx + b
 proj_L <- function(x, m, b){
-	projection <- apply(x, 1, function(pt){
-		if (pt[2] == m*pt[1] + b){ return(pt) }
-		is_above <- pt[1]*m + b < pt[2]
-		ifelse(rep(is_above, 2), c((pt[2]-b)/m, pt[2]), c(pt[1], m*pt[1]+b))
-	})
-	return(t(projection))
+	is_above <- (x[,1]*m + b) < x[,2]
+	proj <- ifelse(rep(is_above, each = 2), c((x[,2]-b)/m, x[,2]), c(x[,1], m*x[,1]+b))
+	proj <- matrix(proj, ncol = 2, byrow = FALSE)
+	return(proj)
+	# projection <- apply(x, 1, function(pt){
+	# 	if (pt[2] == m*pt[1] + b){ return(pt) }
+	# 	is_above <- pt[1]*m + b < pt[2]
+	# 	ifelse(rep(is_above, 2), c((pt[2]-b)/m, pt[2]), c(pt[1], m*pt[1]+b))
+	# })
+	# return(t(projection))
 }
 
 ## polygonizes a line arrangement, returning the 2-cells 

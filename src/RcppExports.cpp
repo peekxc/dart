@@ -44,6 +44,21 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// move_schedule_local
+void move_schedule_local(SEXP r1, SEXP v1, SEXP r2, SEXP v2, IntegerVector schedule, Nullable< Function > f);
+RcppExport SEXP _dart_move_schedule_local(SEXP r1SEXP, SEXP v1SEXP, SEXP r2SEXP, SEXP v2SEXP, SEXP scheduleSEXP, SEXP fSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type r1(r1SEXP);
+    Rcpp::traits::input_parameter< SEXP >::type v1(v1SEXP);
+    Rcpp::traits::input_parameter< SEXP >::type r2(r2SEXP);
+    Rcpp::traits::input_parameter< SEXP >::type v2(v2SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type schedule(scheduleSEXP);
+    Rcpp::traits::input_parameter< Nullable< Function > >::type f(fSEXP);
+    move_schedule_local(r1, v1, r2, v2, schedule, f);
+    return R_NilValue;
+END_RCPP
+}
 // reduce_arma
 Rcpp::List reduce_arma(arma::sp_mat& D, arma::sp_mat& v);
 RcppExport SEXP _dart_reduce_arma(SEXP DSEXP, SEXP vSEXP) {
@@ -68,6 +83,31 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< arma::sp_mat& >::type v2(v2SEXP);
     Rcpp::traits::input_parameter< bool >::type clearing(clearingSEXP);
     rcpp_result_gen = Rcpp::wrap(reduce_local_arma(D1, v1, D2, v2, clearing));
+    return rcpp_result_gen;
+END_RCPP
+}
+// push_map
+NumericMatrix push_map(const NumericMatrix& x, const double m, const double b);
+RcppExport SEXP _dart_push_map(SEXP xSEXP, SEXP mSEXP, SEXP bSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type x(xSEXP);
+    Rcpp::traits::input_parameter< const double >::type m(mSEXP);
+    Rcpp::traits::input_parameter< const double >::type b(bSEXP);
+    rcpp_result_gen = Rcpp::wrap(push_map(x, m, b));
+    return rcpp_result_gen;
+END_RCPP
+}
+// boundary_matrix_fi
+S4 boundary_matrix_fi(SEXP filtration, const size_t k);
+RcppExport SEXP _dart_boundary_matrix_fi(SEXP filtrationSEXP, SEXP kSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type filtration(filtrationSEXP);
+    Rcpp::traits::input_parameter< const size_t >::type k(kSEXP);
+    rcpp_result_gen = Rcpp::wrap(boundary_matrix_fi(filtration, k));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -114,6 +154,17 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::vector<int> >::type x(xSEXP);
     rcpp_result_gen = Rcpp::wrap(countNumLIS(x));
+    return rcpp_result_gen;
+END_RCPP
+}
+// inversions
+IntegerMatrix inversions(const IntegerVector& a);
+RcppExport SEXP _dart_inversions(SEXP aSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerVector& >::type a(aSEXP);
+    rcpp_result_gen = Rcpp::wrap(inversions(a));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -203,13 +254,24 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// pairwise_cost
+IntegerVector pairwise_cost(const IntegerMatrix& M);
+RcppExport SEXP _dart_pairwise_cost(SEXP MSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type M(MSEXP);
+    rcpp_result_gen = Rcpp::wrap(pairwise_cost(M));
+    return rcpp_result_gen;
+END_RCPP
+}
 // inverse_permutation
-IntegerVector inverse_permutation(IntegerVector p);
+IntegerVector inverse_permutation(const IntegerVector& p);
 RcppExport SEXP _dart_inverse_permutation(SEXP pSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< IntegerVector >::type p(pSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type p(pSEXP);
     rcpp_result_gen = Rcpp::wrap(inverse_permutation(p));
     return rcpp_result_gen;
 END_RCPP
@@ -273,6 +335,85 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// pairwise_segment_intersections
+arma::mat pairwise_segment_intersections(const arma::mat& S, const arma::mat& L, bool one_based);
+RcppExport SEXP _dart_pairwise_segment_intersections(SEXP SSEXP, SEXP LSEXP, SEXP one_basedSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type S(SSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type L(LSEXP);
+    Rcpp::traits::input_parameter< bool >::type one_based(one_basedSEXP);
+    rcpp_result_gen = Rcpp::wrap(pairwise_segment_intersections(S, L, one_based));
+    return rcpp_result_gen;
+END_RCPP
+}
+// all_segment_intersections
+arma::mat all_segment_intersections(const arma::mat& S, bool one_based);
+RcppExport SEXP _dart_all_segment_intersections(SEXP SSEXP, SEXP one_basedSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type S(SSEXP);
+    Rcpp::traits::input_parameter< bool >::type one_based(one_basedSEXP);
+    rcpp_result_gen = Rcpp::wrap(all_segment_intersections(S, one_based));
+    return rcpp_result_gen;
+END_RCPP
+}
+// bin_break
+Rcpp::IntegerVector bin_break(Rcpp::NumericVector x, Rcpp::NumericVector bins);
+RcppExport SEXP _dart_bin_break(SEXP xSEXP, SEXP binsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type x(xSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type bins(binsSEXP);
+    rcpp_result_gen = Rcpp::wrap(bin_break(x, bins));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SearchInStrip
+arma::umat SearchInStrip(std::vector< double > y_b, std::vector< double > y_e, double b, double e, bool one_based);
+RcppExport SEXP _dart_SearchInStrip(SEXP y_bSEXP, SEXP y_eSEXP, SEXP bSEXP, SEXP eSEXP, SEXP one_basedSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::vector< double > >::type y_b(y_bSEXP);
+    Rcpp::traits::input_parameter< std::vector< double > >::type y_e(y_eSEXP);
+    Rcpp::traits::input_parameter< double >::type b(bSEXP);
+    Rcpp::traits::input_parameter< double >::type e(eSEXP);
+    Rcpp::traits::input_parameter< bool >::type one_based(one_basedSEXP);
+    rcpp_result_gen = Rcpp::wrap(SearchInStrip(y_b, y_e, b, e, one_based));
+    return rcpp_result_gen;
+END_RCPP
+}
+// span_intersections
+arma::mat span_intersections(const arma::umat indices, const Rcpp::NumericVector& y_b, const Rcpp::NumericVector& y_e, double b, double e, bool one_based);
+RcppExport SEXP _dart_span_intersections(SEXP indicesSEXP, SEXP y_bSEXP, SEXP y_eSEXP, SEXP bSEXP, SEXP eSEXP, SEXP one_basedSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::umat >::type indices(indicesSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type y_b(y_bSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type y_e(y_eSEXP);
+    Rcpp::traits::input_parameter< double >::type b(bSEXP);
+    Rcpp::traits::input_parameter< double >::type e(eSEXP);
+    Rcpp::traits::input_parameter< bool >::type one_based(one_basedSEXP);
+    rcpp_result_gen = Rcpp::wrap(span_intersections(indices, y_b, y_e, b, e, one_based));
+    return rcpp_result_gen;
+END_RCPP
+}
+// bentley_ottmann
+arma::mat bentley_ottmann(const arma::mat& S);
+RcppExport SEXP _dart_bentley_ottmann(SEXP SSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type S(SSEXP);
+    rcpp_result_gen = Rcpp::wrap(bentley_ottmann(S));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 RcppExport SEXP _rcpp_module_boot_PspBoolMatrix();
 RcppExport SEXP _rcpp_module_boot_implicit_filtration_module();
@@ -281,12 +422,16 @@ static const R_CallMethodDef CallEntries[] = {
     {"_dart_reduce_pspbool", (DL_FUNC) &_dart_reduce_pspbool, 2},
     {"_dart_reduce_local_pspbool", (DL_FUNC) &_dart_reduce_local_pspbool, 5},
     {"_dart_simulate_vineyard_cpp", (DL_FUNC) &_dart_simulate_vineyard_cpp, 4},
+    {"_dart_move_schedule_local", (DL_FUNC) &_dart_move_schedule_local, 6},
     {"_dart_reduce_arma", (DL_FUNC) &_dart_reduce_arma, 2},
     {"_dart_reduce_local_arma", (DL_FUNC) &_dart_reduce_local_arma, 5},
+    {"_dart_push_map", (DL_FUNC) &_dart_push_map, 3},
+    {"_dart_boundary_matrix_fi", (DL_FUNC) &_dart_boundary_matrix_fi, 2},
     {"_dart_boundary_matrix_st", (DL_FUNC) &_dart_boundary_matrix_st, 2},
     {"_dart_all_lcs", (DL_FUNC) &_dart_all_lcs, 2},
     {"_dart_LIS", (DL_FUNC) &_dart_LIS, 1},
     {"_dart_countNumLIS", (DL_FUNC) &_dart_countNumLIS, 1},
+    {"_dart_inversions", (DL_FUNC) &_dart_inversions, 1},
     {"_dart_inversion_count", (DL_FUNC) &_dart_inversion_count, 1},
     {"_dart_perm_dist_mat", (DL_FUNC) &_dart_perm_dist_mat, 3},
     {"_dart_fast_choose", (DL_FUNC) &_dart_fast_choose, 2},
@@ -294,12 +439,19 @@ static const R_CallMethodDef CallEntries[] = {
     {"_dart_reduce_local_dense", (DL_FUNC) &_dart_reduce_local_dense, 4},
     {"_dart_reduce_dense", (DL_FUNC) &_dart_reduce_dense, 2},
     {"_dart_interval_cost_rcpp", (DL_FUNC) &_dart_interval_cost_rcpp, 2},
+    {"_dart_pairwise_cost", (DL_FUNC) &_dart_pairwise_cost, 1},
     {"_dart_inverse_permutation", (DL_FUNC) &_dart_inverse_permutation, 1},
     {"_dart_inverse_permutation2", (DL_FUNC) &_dart_inverse_permutation2, 1},
     {"_dart_test_unrank", (DL_FUNC) &_dart_test_unrank, 3},
     {"_dart_order_simplices", (DL_FUNC) &_dart_order_simplices, 2},
     {"_dart_unique_numeric", (DL_FUNC) &_dart_unique_numeric, 2},
     {"_dart_longest_inc_subseq", (DL_FUNC) &_dart_longest_inc_subseq, 1},
+    {"_dart_pairwise_segment_intersections", (DL_FUNC) &_dart_pairwise_segment_intersections, 3},
+    {"_dart_all_segment_intersections", (DL_FUNC) &_dart_all_segment_intersections, 2},
+    {"_dart_bin_break", (DL_FUNC) &_dart_bin_break, 2},
+    {"_dart_SearchInStrip", (DL_FUNC) &_dart_SearchInStrip, 5},
+    {"_dart_span_intersections", (DL_FUNC) &_dart_span_intersections, 6},
+    {"_dart_bentley_ottmann", (DL_FUNC) &_dart_bentley_ottmann, 1},
     {"_rcpp_module_boot_PspBoolMatrix", (DL_FUNC) &_rcpp_module_boot_PspBoolMatrix, 0},
     {"_rcpp_module_boot_implicit_filtration_module", (DL_FUNC) &_rcpp_module_boot_implicit_filtration_module, 0},
     {NULL, NULL, 0}

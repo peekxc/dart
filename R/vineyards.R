@@ -262,42 +262,125 @@ vineyards_schedule <- function(K0, K1, w0=NULL, w1=NULL){
 	stopifnot(all(K0 %in% K1), all(K1 %in% K0))
 	
 	## Ensure both filtrations are permutations of each other
-	matched_idx <- match(K0, K1)
-	stopifnot(!any(is.na(matched_idx)))
-	if (all(matched_idx == seq_along(K0))){ return(vector("integer", length = 0L)) }
+	## If identity permutation, then return no schedule 
+	k1_matching <- match(K1, K0)
+	stopifnot(!any(is.na(k1_matching)))
+	if (all(k1_matching == seq_along(K0))){ return(matrix(0, nrow = 2L, ncol = 0L)) }
 	
-	impose_total_order <- function(w, eps=.Machine$double.eps){
-		cfactor <- seq(1, 2, length.out = length(w))*eps
-		f_diffs <- c(diff(cfactor),0)
-		noise <- cfactor + runif(n = length(w), min = f_diffs*(1/3), max = f_diffs*(2/3))
-		stopifnot(all(order(noise) == seq_along(noise)))
-		return(w+noise)
+	## Use asymptotically slower but in practice faster O(n^2) inversion algorithm to 
+	## calculate intersection pairs
+	inv <- dart:::inversions(k1_matching)
+	int_points <- dart:::span_intersections(inv-1L, w0, w1, 0.0, 1.0)
+	stopifnot(ncol(int_points) == kendall_dist(k1_matching))	
+
+	## Converts transpositions by id into transpositions by position
+	relative_tr <- function(p, transpositions){
+		S <- matrix(0L, ncol = 0, nrow = 2)
+		for (i in seq(ncol(transpositions))){
+			tr_idx <- match(transpositions[,i], p)
+			S <- cbind(S, tr_idx)
+			p[tr_idx] <- p[rev(tr_idx)]
+		}
+		return(unname(S))
 	}
+	
+	## Magic to reverse the order in which tranpositions occur 
+	order_idx <- rev(order(int_points[1,], decreasing = TRUE))
+	S <- relative_tr(seq_along(K0), transpositions = inv[,order_idx])
+	is_valid_schedule <- all(apply(S, 2, diff) == 1L)
+	stopifnot(is_valid_schedule)
+	xv <- int_points[1,order_idx]
+	
+	return(list(schedule=S, lambda=xv))
+}
+	
+	
+	# order_idx <- order(int_points[1,])
+	# inv_ordered <- inv[,order_idx]
+	# dup_values <- unique(int_points[1,duplicated(int_points[1,])])
+	# for (ux in dup_values){
+	# 	idx <- which(int_points[1,] == ux)
+	# 	inv_ordered[,idx] <- inv_ordered[,rev(idx)]
+	# }
 
-	f_k0 <- impose_total_order(w0, sqrt(.Machine$double.eps))
-	f_k1 <- impose_total_order(w1, sqrt(.Machine$double.eps))
+	# k1_matching <- match(K1, K0)
+	# inv <- dart:::inversions(k1_matching)
+	# int_points <- dart:::span_intersections(inv-1L, w0, w1, 0.0, 1.0)
+	# S <- relative_tr(seq_along(K0), inv_ordered)
+	# is_valid_schedule <- all(apply(relative_tr(P, inv_ordered), 2, diff) == 1L)
+	# stopifnot(is_valid_schedule)
+	
+	## Generate the schedule
+	# P <- seq_along(K0)
+	# Q <- k1_matching
+	# S <- generate_schedule(P, Q, inv[,order_idx], check = TRUE)
 
-	## F1 in K0 filtration order
-	f_k1_matched <- f_k1[matched_idx]
+	# show_tr <- function(p, tr){
+	# 	cat(p)
+	# 	cat("\n")
+	# 	for (i in seq(ncol(tr))){
+	# 		p[tr[,i]] <- p[rev(tr[,i])]
+	# 		cat(ifelse(p %in% p[tr[,i]] , crayon::black(p), crayon::red(p)))
+	# 		cat("\n")
+	# 	}
+	# }
+	# show_tr(Q, relative_tr(Q, inv)[,order_idx])
+# }
 
+	## Given two permutations 'p' and 'q' and a set of m indices to transpose between then, this 
+	## function returns a (2 x m) matrix of relative positions which successively describe the 
+	## positions of the elements to transpose in transforming p -> q
+	# generate_schedule <- function(p, q, transpositions){
+	# 	stopifnot(nrow(transpositions) == 2, is.matrix(transpositions), all(p %in% q))
+	# 	stopifnot(all(as.vector(transpositions[,1:2]) %in% p))
+	# 	S <- matrix(0L, ncol = 0, nrow = 2)
+	# 	for (i in seq(nrow(transpositions))){
+	# 		tr_idx <- match(transpositions[i,], p)
+	# 		# stopifnot(abs(diff(tr_idx)) == 1)
+	# 		S <- cbind(S, tr_idx)
+	# 		p <- permute_move(p, i = tr_idx[1], j = tr_idx[2])
+	# 	}
+	# 	return(unname(S))
+	# }
+	# impose_total_order <- function(w, eps=.Machine$double.eps){
+	# 	cfactor <- seq(1, 2, length.out = length(w))*eps
+	# 	f_diffs <- c(diff(cfactor),0)
+	# 	noise <- cfactor + runif(n = length(w), min = f_diffs*(1/3), max = f_diffs*(2/3))
+	# 	stopifnot(all(order(noise) == seq_along(noise)))
+	# 	return(w+noise)
+	# }
+	# 
+	# f_k0 <- impose_total_order(w0, sqrt(.Machine$double.eps))
+	# f_k1 <- impose_total_order(w1, sqrt(.Machine$double.eps))
+	# 
+	# ## F1 in K0 filtration order
+	# f_k1_matched <- f_k1[matched_idx]
+	
+	## Find intersection points
+
+	# indices <- dart:::SearchInStrip(w0, w1, 0, 1)
+	# int_points <- dart:::span_intersections(indices, yb, ye, 0, 1)
+	
 	## Build a straight-line homotopy
-	sf_segms <- lapply(seq_along(K0), function(i){
-		sf::st_linestring(rbind(c(0, f_k0[i]), c(1, f_k1_matched[i])))
-	})
+	# sf_segms <- lapply(seq_along(K0), function(i){
+	# 	sf::st_linestring(rbind(c(0, f_k0[i]), c(1, f_k1_matched[i])))
+	# })
 	# w1_matched <- w1[matched_idx]
 	# sf_segms <- lapply(seq_along(K0), function(i){ 	
 	# 	sf::st_linestring(rbind(c(0, w0[i]), c(1, w1_matched[i]))) 
 	# })
 	
 	## Detect the crossings, ordered by x-axis
-	seg_sc <- sf::st_sfc(sf_segms)
-	seg_int <- sf::st_intersection(seg_sc, seg_sc)
-	intersections <- attr(seg_int, "idx")
-	crossings <- intersections[apply(intersections, 1, function(x) x[1] != x[2]),]
-	crossings <- unique(cbind(pmin(crossings[,1], crossings[,2]), pmax(crossings[,1], crossings[,2])))
-	int_pts <- apply(crossings, 1, function(idx){
-		sf::st_intersection(sf_segms[[idx[1]]], sf_segms[[idx[2]]])
-	})
+
+	# seg_sc <- sf::st_sfc(sf_segms)
+	# seg_int <- sf::st_intersection(seg_sc, seg_sc)
+	# intersections <- attr(seg_int, "idx")
+	# crossings <- intersections[apply(intersections, 1, function(x) x[1] != x[2]),]
+	# crossings <- unique(cbind(pmin(crossings[,1], crossings[,2]), pmax(crossings[,1], crossings[,2])))
+	# int_pts <- apply(crossings, 1, function(idx){
+	# 	sf::st_intersection(sf_segms[[idx[1]]], sf_segms[[idx[2]]])
+	# })
+	
 	# stopifnot(length(unique(int_pts[1,])) == ncol(int_pts))
 	
 	## Enforce lex order on duplicates 
@@ -308,30 +391,4 @@ vineyards_schedule <- function(K0, K1, w0=NULL, w1=NULL){
 	# 		crossings[d_idx,] <- kdtools::lex_sort(crossings[d_idx,])
 	# 	}
 	# }
-	
-	## Given two permutations 'p' and 'q' and a set of m indices to transpose between then, this 
-	## function returns a (2 x m) matrix of relative positions which successively describe the 
-	## positions of the elements to transpose in transforming p -> q
-	generate_schedule <- function(p, q, transpositions, check=TRUE){
-		stopifnot(ncol(transpositions) == 2, is.matrix(transpositions), all(p %in% q))
-		stopifnot(all(as.vector(transpositions[,1:2]) %in% p))
-		S <- matrix(0L, ncol = 0, nrow = 2)
-		for (i in seq(nrow(transpositions))){
-			tr_idx <- match(transpositions[i,], p)
-			stopifnot(abs(diff(tr_idx)) == 1)
-			S <- cbind(S, tr_idx)
-			p <- permute_move(p, i = tr_idx[1], j = tr_idx[2])
-		}
-		if (check){ stopifnot(all(p == q)) }
-		return(unname(S))
-	}
-	
-	## Generate the schedule
-	P <- seq_along(K0)
-	Q <- match(K1, K0)
-	order_idx <- order(int_pts[1,])
-	S <- generate_schedule(P, Q, crossings[order_idx,], check = TRUE)
-	xv <- int_pts[1,order_idx]
-	
-	return(list(schedule=S, lambda=xv))
-}
+# }

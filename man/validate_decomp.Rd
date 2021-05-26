@@ -4,7 +4,7 @@
 \alias{validate_decomp}
 \title{Validates reduction decomposition}
 \usage{
-validate_decomp(x, D = NULL)
+validate_decomp(x, D = NULL, field = c("mod2", "reals"))
 }
 \description{
 Validates reduction decomposition
