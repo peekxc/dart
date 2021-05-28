@@ -253,8 +253,12 @@ simulate_vineyard_local <- function(R1, V1, S, R2=NULL, V2=NULL, f = NULL, D1 = 
 #' vineyards_schedule
 #' @description Creates a schedule of transpositions needs to transform one filtration into another. 
 #' @details This function assumes K0 and K1 contain the same elements. 
+#' @param K0 filtration
+#' @param K1 filtation, as a list of simplices
+#' @param w0 filtration grades for \code{K0}, in the same order as \code{K0}
+#' @param w1 filtration grades for \code{K1}, in the same order as \code{K1}
 #' @export
-vineyards_schedule <- function(K0, K1, w0=NULL, w1=NULL){
+vineyards_schedule <- function(K0, K1, w0=NULL, w1=NULL, schedule_order="default"){
 	stopifnot(is.list(K0), is.list(K1))
 	if (missing(w0)){ w0 <- seq(length(K0)) }
 	if (missing(w1)){ w1 <- seq(length(K1)) }
@@ -267,32 +271,47 @@ vineyards_schedule <- function(K0, K1, w0=NULL, w1=NULL){
 	stopifnot(!any(is.na(k1_matching)))
 	if (all(k1_matching == seq_along(K0))){ return(matrix(0, nrow = 2L, ncol = 0L)) }
 	
-	## Use asymptotically slower but in practice faster O(n^2) inversion algorithm to 
-	## calculate intersection pairs
-	inv <- dart:::inversions(k1_matching)
-	int_points <- dart:::span_intersections(inv-1L, w0, w1, 0.0, 1.0)
-	stopifnot(ncol(int_points) == kendall_dist(k1_matching))	
+	## Use asymptotically slower but in practice faster O(n^2) inversion algorithm 
+	inv <- dart:::inversions(k1_matching-1L)
+	stopifnot(ncol(inv) == kendall_dist(k1_matching))	
+	
+	## If wanted, attempt to form the homotopy, otherwise don't bother  and just report the inversions
+	if (missing(schedule_order) || schedule_order %in% c("default", "insertion")){
+		S <- dart:::relative_transpositions(length(K0), inv[,rev(seq(ncol(inv)))])+1L
+		# is_valid_schedule <- all(apply(S, 2, diff) == 1L)
+		is_valid_schedule <- all(diff(S)[seq(from = 1, to = ncol(S)-1L, by = 2)] == 1L)
+		if (!is_valid_schedule){
+			stop("Failed to accurately order transpositions due to rounding issues.")
+		}
+		return(list(schedule=S, lambda=NA))
+	} else {
+		int_points <- dart:::span_intersections(inv, w0, w1[match(K0, K1)], 0.0, 1.0)
+		order_idx <- rev(order(int_points[1,], decreasing = TRUE))
+		S <- dart:::relative_transpositions(length(K0), inv[,order_idx])+1L
+		is_valid_schedule <- all(diff(S)[seq(from = 1, to = ncol(S)-1L, by = 2)] == 1L)
+		if (!is_valid_schedule){
+			stop("Failed to accurately order transpositions according to linear homotopy due to rounding issues.")
+		}
+		return(list(schedule=S, lambda=int_points[1,order_idx]))
+	}
+}
+
+
 
 	## Converts transpositions by id into transpositions by position
-	relative_tr <- function(p, transpositions){
-		S <- matrix(0L, ncol = 0, nrow = 2)
-		for (i in seq(ncol(transpositions))){
-			tr_idx <- match(transpositions[,i], p)
-			S <- cbind(S, tr_idx)
-			p[tr_idx] <- p[rev(tr_idx)]
-		}
-		return(unname(S))
-	}
-	
+	# relative_tr <- function(p, transpositions){
+	# 	S <- matrix(0L, ncol = 0, nrow = 2)
+	# 	for (i in seq(ncol(transpositions))){
+	# 		tr_idx <- match(transpositions[,i], p)
+	# 		S <- cbind(S, tr_idx)
+	# 		p[tr_idx] <- p[rev(tr_idx)]
+	# 	}
+	# 	return(unname(S))
+	# }
+	# 
 	## Magic to reverse the order in which tranpositions occur 
-	order_idx <- rev(order(int_points[1,], decreasing = TRUE))
-	S <- relative_tr(seq_along(K0), transpositions = inv[,order_idx])
-	is_valid_schedule <- all(apply(S, 2, diff) == 1L)
-	stopifnot(is_valid_schedule)
-	xv <- int_points[1,order_idx]
 	
-	return(list(schedule=S, lambda=xv))
-}
+# }
 	
 	
 	# order_idx <- order(int_points[1,])

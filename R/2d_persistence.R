@@ -60,24 +60,49 @@ dual_line_arrangement <- function(x){
 #' Dual graph
 #' @description Computes the dual graph of a line arrangement. 
 #' @param arrangement geometry collection of polygons (output from \code{dual_line_arrangement}).
+#' @details Uses the relation t(D) %*% D to compute the dual graph, where \code{D} is the boundary matrix 
+#' of the polygons. The dual graph has one vertex for each face, and one edge for each edge connecting adjacent
+#' faces in the collection. This function is particularly useful for planar subdivisions / line arrangements.  
+#' @import kdtools Matrix
 #' @return edge list of the dual graph. 
 #' @export
 dual_graph <- function(arrangement){
 	stopifnot("GEOMETRYCOLLECTION" %in% class(arrangement))
 	stopifnot(all(sapply(arrangement, function(x) "POLYGON" %in% class(x))))
 	
-	## Get polygon boundary intersections
-	poly_intersects <- combn(length(arrangement), 2, function(x){ 
-		length(sf::st_intersects(arrangement[[x[1]]], arrangement[[x[2]]])[[1]]) > 0 
+	## Faster dual graph
+	all_segments <- lapply(LA, function(p){
+		pts <- matrix(unlist(p), ncol=2)
+		do.call(rbind, lapply(seq(nrow(pts)-1), function(i){ 
+			if (pts[i,1] < pts[i+1,1]){
+				c(pts[i,], pts[i+1,]) 
+			} else {
+				c(pts[i+1,], pts[i,]) 
+			}
+		}))
 	})
-	## Determine if intersections are point-wise or along an edge
-	intersect_at_end <- apply(combn(length(arrangement), 2)[,poly_intersects], 2, function(x){
-		int_type <- class(sf::st_intersection(arrangement[[x[1]]], arrangement[[x[2]]]))
-		return("LINESTRING" %in% int_type)
+	segments_ordered <- kdtools::kd_sort(unique(do.call(rbind, all_segments)))
+	face_idx <- lapply(all_segments, function(S){
+		apply(S, 1, function(s){ kdtools::kd_lower_bound(segments_ordered, s) })
 	})
-	## The edges of the dual graph are the pairs of faces that share an edge 
-	edges <- combn(length(arrangement), 2)[,which(poly_intersects)[intersect_at_end]]
-	return(edges)
+	jj <- rep(seq_along(LA), times = sapply(face_idx, length))
+	B <- Matrix::sparseMatrix(i = unlist(face_idx), j = jj, x = rep(1, length(unlist(face_idx))))
+	nz <- which((t(B) %*% B) != 0, arr.ind = TRUE)
+	E <- nz[nz[,1] != nz[,2],]
+	DG <- unique(cbind(pmin(E[,1], E[,2]), pmax(E[,1], E[,2])))
+	
+	# ## Get polygon boundary intersections
+	# poly_intersects <- combn(length(arrangement), 2, function(x){ 
+	# 	length(sf::st_intersects(arrangement[[x[1]]], arrangement[[x[2]]])[[1]]) > 0 
+	# })
+	# ## Determine if intersections are point-wise or along an edge
+	# intersect_at_end <- apply(combn(length(arrangement), 2)[,poly_intersects], 2, function(x){
+	# 	int_type <- class(sf::st_intersection(arrangement[[x[1]]], arrangement[[x[2]]]))
+	# 	return("LINESTRING" %in% int_type)
+	# })
+	# ## The edges of the dual graph are the pairs of faces that share an edge 
+	# edges <- combn(length(arrangement), 2)[,which(poly_intersects)[intersect_at_end]]
+	return(DG)
 }
 
 
@@ -290,23 +315,23 @@ polygonize_la <- function(L, xlim=c(0,1), ylim=c(0,1)){
 }
 
 ## Form the dual graph
-dual_graph <- function(arrangement){
-	stopifnot("GEOMETRYCOLLECTION" %in% class(arrangement))
-	stopifnot(all(sapply(arrangement, function(x) "POLYGON" %in% class(x))))
-	
-	## Get polygon boundary intersections
-	poly_intersects <- combn(length(arrangement), 2, function(x){ 
-		length(sf::st_intersects(arrangement[[x[1]]], arrangement[[x[2]]])[[1]]) > 0 
-	})
-	## Determine if intersections are point-wise or along an edge
-	intersect_at_end <- apply(combn(length(arrangement), 2)[,poly_intersects], 2, function(x){
-		int_type <- class(sf::st_intersection(arrangement[[x[1]]], arrangement[[x[2]]]))
-		return("LINESTRING" %in% int_type)
-	})
-	## The edges of the dual graph are the pairs of faces that share an edge 
-	edges <- combn(length(arrangement), 2)[,which(poly_intersects)[intersect_at_end]]
-	return(edges)
-}
+# dual_graph <- function(arrangement){
+# 	stopifnot("GEOMETRYCOLLECTION" %in% class(arrangement))
+# 	stopifnot(all(sapply(arrangement, function(x) "POLYGON" %in% class(x))))
+# 	
+# 	## Get polygon boundary intersections
+# 	poly_intersects <- combn(length(arrangement), 2, function(x){ 
+# 		length(sf::st_intersects(arrangement[[x[1]]], arrangement[[x[2]]])[[1]]) > 0 
+# 	})
+# 	## Determine if intersections are point-wise or along an edge
+# 	intersect_at_end <- apply(combn(length(arrangement), 2)[,poly_intersects], 2, function(x){
+# 		int_type <- class(sf::st_intersection(arrangement[[x[1]]], arrangement[[x[2]]]))
+# 		return("LINESTRING" %in% int_type)
+# 	})
+# 	## The edges of the dual graph are the pairs of faces that share an edge 
+# 	edges <- combn(length(arrangement), 2)[,which(poly_intersects)[intersect_at_end]]
+# 	return(edges)
+# }
 
 #' @export
 plot_hilbert <- function(x, betti=c(0,1,2), show_grid=TRUE, highlight=NULL, ...){

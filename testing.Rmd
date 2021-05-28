@@ -134,7 +134,7 @@ dart:::move_schedule_local(
 ```{r}
 library(dart)
 set.seed(1234)
-R <- pbgrad::r_geometric_complex(20, radius = 0.20, dim = 2, filtered = TRUE, coords = TRUE)
+R <- pbgrad::r_geometric_complex(6, radius = 0.20, dim = 2, filtered = TRUE, coords = TRUE)
 K0 <- lapply(R$simplices, as.integer)
 K1 <- lapply(unname(str_to_simplex(sample_filtration(unlist(simplex_to_str(K0))))), as.integer)
 w0 <- R$weights

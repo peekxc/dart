@@ -29,8 +29,8 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 			
 			## Perform the reductions on each of the matrices
 			reduce_local_pspbool(
-				D1s = D1_psp$matrix$as_XPtr(), V1s = V1_psp$matrix$as_XPtr(), 
-				D2s = D2_psp$matrix$as_XPtr(), V2s = V2_psp$matrix$as_XPtr(), 
+				D1_ptr = D1_psp$matrix$as_XPtr(), V1_ptr = V1_psp$matrix$as_XPtr(), 
+				D2_ptr = D2_psp$matrix$as_XPtr(), V2_ptr = V2_psp$matrix$as_XPtr(), 
 				clearing = TRUE
 			)
 			
@@ -59,7 +59,7 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 			## Perform the reduction on the whole matrix 
 			D_psp <- dart::psp_matrix(x = D$matrix)
 			V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix)))
-			reduce_pspbool(D_psp$matrix$as_XPtr(), D_psp$matrix$as_XPtr())
+			reduce_pspbool(D_psp$matrix$as_XPtr(), V_psp$matrix$as_XPtr())
 			
 			## Determine the output type
 			if (missing(output) || output == "RV"){
@@ -73,10 +73,28 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 				res <- list(V=V_psp)
 			}
 		}
+	} else {
+		stopifnot(!is.null(dim(D)))
+		## Perform the reduction on the whole matrix 
+		D_psp <- dart::psp_matrix(x = D)
+		V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D)))
+		reduce_pspbool(D_psp$matrix$as_XPtr(), V_psp$matrix$as_XPtr())
+		
+		## Determine the output type
+		if (missing(output) || output == "RV"){
+			res <- list(R=D_psp, V=V_psp)
+		} else if (out == "RU" || "U"){
+			U <- solve(as(V_psp, "sparseMatrix"))
+			res <- ifelse(out == "RU", list(R=D_psp, U=psp_matrix(x=U)), list(U=psp_matrix(x=U)))
+		} else if (out == "R"){
+			res <- list(R=D_psp)
+		} else if (out == "V"){
+			res <- list(V=V_psp)
+		}
 	}
 	class(res) <- "fbm_decomp"
 	if (validate){
-		if (is.list(D$matrix)){
+		if ("fbm" %in% class(D) && is.list(D$matrix)){
 			valid <- validate_decomp(res, D)
 			if (any(!valid)){
 				stop(sprintf("Invalid: R reduced = %s, V triangular = %s, D := RV = %s", 
@@ -95,13 +113,9 @@ print.fbm_decomp <- function(x, ...){
 #' @export
 is_reduced <- function(x){
 	is_psp <- "PspMatrix" %in% class(x)
-	if (!is.null(dim(x)) && !is_psp){
-		pivots <- apply(x, 2, dart:::low_entry)
-	} else if (is_psp){
-		pivots <- sapply(1:x$matrix$n_cols, function(j){ x$matrix$low_entry(j-1L) })+1L
-	} else {
-		stop("Unknown type given for x.")
-	}
+	if (is_psp){ x <- as(x, "sparseMatrix") }
+	stopifnot(!is.null(dim(x)))
+	pivots <- apply(x, 2, dart:::low_entry)
 	is_reduced <- !as.logical(anyDuplicated(pivots[pivots != 0]))
 	return(is_reduced)
 }
@@ -120,10 +134,9 @@ validate_decomp <- function(x, D = NULL, field = c("mod2", "reals")){
 	is_red <- ifelse(is.list(x$R), all(sapply(x$R, is_reduced)), is_reduced(x$R))
 	is_tri <- function(v) { as.logical(Matrix::isTriangular(v)) }
 	if (is.list(x$V)){
-		is_psp <- all(sapply(x$V, function(m) "PspMatrix" %in% class(m)))
-		is_upt <- ifelse(is_psp, sapply(x$V, function(v){ is_tri(v$as.Matrix()) }), sapply(x$V, is_tri))
+		is_upt <- ifelse(is_psp, sapply(x$V, function(v){ is_tri(as(v, "sparseMatrix")) }))
 	} else {
-		is_upt <- ifelse("PspMatrix" %in% class(x), is_tri(x$as.Matrix()), is_tri(x))
+		is_upt <- is_tri(as(x$V, "sparseMatrix"))
 	}
 	if (!missing(D)){
 		if (is.list(D)){
@@ -141,9 +154,9 @@ validate_decomp <- function(x, D = NULL, field = c("mod2", "reals")){
 		}
 	}
 	if (missing(D)){
-		return(c(reduced=is_red, triangular=is_tri))
+		return(c(reduced=is_red, triangular=is_upt))
 	} 
-	return(c(reduced=is_red, triangular=is_tri, decomposition=is_dec))
+	return(c(reduced=is_red, triangular=is_upt, decomposition=is_dec))
 	# if (any(!c(is_red, is_upt, is_dec))){
 	# 	stop(sprintf("Invalid: R reduced = %s, V triangular = %s, D := RV = %s", is_red, is_upt, is_dec))
 	# }

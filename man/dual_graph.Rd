@@ -15,3 +15,8 @@ edge list of the dual graph.
 \description{
 Computes the dual graph of a line arrangement.
 }
+\details{
+Uses the relation t(D) %*% D to compute the dual graph, where \code{D} is the boundary matrix 
+of the polygons. The dual graph has one vertex for each face, and one edge for each edge connecting adjacent
+faces in the collection. This function is particularly useful for planar subdivisions / line arrangements.
+}

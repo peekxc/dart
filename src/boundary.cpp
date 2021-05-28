@@ -23,6 +23,39 @@ void repeat_pattern(Container& data, std::size_t count) {
 }
 
 // [[Rcpp::export]]
+S4 boundary_matrix_fi_full(SEXP filtration) {
+	XPtr< ImplicitFiltration > fi_ptr(filtration);
+	ImplicitFiltration& fi = *fi_ptr;
+	
+	// Prepare sparse matrix inputs 
+	const auto nb = std::accumulate(fi.n_simplexes.begin(), fi.n_simplexes.end(), 0);
+	vector< size_t > i, j;
+	vector< int > x; 
+	i.reserve(nb); j.reserve(nb); x.reserve(nb);
+	
+	// Apply boundary operator to every k-simplex
+	auto x_out = std::back_inserter(x);
+	auto i_out = std::back_inserter(i);
+	auto j_out = std::back_inserter(j);
+	for (size_t ii = 0, jj = 0; ii < fi.m; ++ii, ++jj){
+		if (fi.dims[ii] > 0){
+			const size_t k = fi.dims[ii]; 
+			fi.boundary(ii, true, i_out);	
+			std::fill_n(j_out, k+1, jj);
+			for (size_t c = 0; c < (k+1); ++c){ *x_out++ = c % 2 == 0 ? 1 : -1; }
+		}
+	}
+
+	// Create the sparse matrix
+	Rcpp::Environment Matrix("package:Matrix"); 
+  Rcpp::Function constructMatrix = Matrix["sparseMatrix"];    
+	auto m_dim = IntegerVector::create(nb, nb);
+	S4 m = constructMatrix(_["i"] = i, _["j"] = j, _["x"] = x, _["index1"] = false, _["dims"] = m_dim);
+	
+	return(m);
+}
+
+// [[Rcpp::export]]
 S4 boundary_matrix_fi(SEXP filtration, const size_t k) {
 	XPtr< ImplicitFiltration > fi_ptr(filtration);
 	ImplicitFiltration& fi = *fi_ptr;
@@ -61,9 +94,6 @@ S4 boundary_matrix_fi(SEXP filtration, const size_t k) {
 				index_map.push_back(lex_to_full[i] - offset);
 			}
 		}
-		Rcout << "i: "; for (auto ii: i){ Rcout << ii << ", "; }; Rcout << std::endl; 
-		//std::transform(i.begin(), i.end(), i.begin(), [&index_map](auto ii){ return(index_map.at(ii)); });
-		Rcout << "i: "; for (auto ii: i){ Rcout << ii << ", "; }; Rcout << std::endl; 
 	}
 	
 	// Create the sparse matrix

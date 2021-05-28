@@ -4,7 +4,16 @@
 \alias{vineyards_schedule}
 \title{vineyards_schedule}
 \usage{
-vineyards_schedule(K0, K1, w0 = NULL, w1 = NULL)
+vineyards_schedule(K0, K1, w0 = NULL, w1 = NULL, schedule_order = "default")
+}
+\arguments{
+\item{K0}{filtration}
+
+\item{K1}{filtation, as a list of simplices}
+
+\item{w0}{filtration grades for \code{K0}, in the same order as \code{K0}}
+
+\item{w1}{filtration grades for \code{K1}, in the same order as \code{K1}}
 }
 \description{
 Creates a schedule of transpositions needs to transform one filtration into another.

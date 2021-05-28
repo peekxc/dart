@@ -16,10 +16,9 @@ concept Pivotable = requires(M a) {
 
 template< typename M, typename F = typename M::value_type >
 concept Addable = requires(M a) {
-  a.add_scaled_col(size_t(0), size_t(0), F(0));
-} || requires(M a) {
 	{ a.scale_col(size_t(0), F(0)) } -> std::same_as< void >;
-	{ a.add_col(size_t(0), size_t(0)) } -> std::same_as< void >;
+	{ a.add_cols(size_t(0), size_t(0), size_t(0)) } -> std::same_as< void >;
+	{ a.add_scaled_col(size_t(0), size_t(0), size_t(0), F(0)) } -> std::same_as< void >;
 };
 
 // A type M is said to cancellable if it supports a cancel_lowest() method

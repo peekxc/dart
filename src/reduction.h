@@ -15,6 +15,11 @@ using std::make_tuple;
 #include "reduction_concepts.h"
 #include "combinadic.h"
 
+#include "Rcpp.h"
+using namespace Rcpp; 
+
+static std::array< size_t, 2 > reduction_stats; 
+
 template< bool clearing = true, ReducibleMatrix Matrix, typename Iter >
 void pHcol_local(Matrix& R1, Matrix& V1, Matrix& R2, Matrix& V2, Iter b1, const Iter e1, Iter b2, const Iter e2){
 	using field_t = typename Matrix::value_type;
@@ -49,19 +54,37 @@ void pHcol(Matrix& R, Matrix& V, Iter b, const Iter e){
 	using entry_t = typename std::pair< size_t, field_t >;
 	
 	// Reduction algorithm
-	const size_t m = R.dim().first;
 	for (size_t j; b != e; ++b){
 		j = *b; 
-		std::cout << "Reducing " << j << std::endl; 
+		// Rcout << "Reducing " << j << std::endl; 
 		optional< entry_t > low_i, low_j;
 		while((low_j = R.low(j)) && (low_i = R.find_low(j, low_j->first))){
 			// Rprintf("quotienting(%d/%d): %.2g / %.2g\n", low_j->first, low_i->first, low_j->second, low_i->second);
 			size_t i = low_i->first;
 			auto lambda = low_j->second / low_i->second;
-			std::cout << "i = " << i << ", j = " << j << ", lambda = " << lambda << std::endl; 
-			std::cout << "pivot_i = " << low_i->second << ", pivot_j = " << low_j->second << std::endl; 
-			R.add_scaled_col(i, j, -lambda);
-			V.add_scaled_col(i, j, -lambda);
+			// Rcout << "i = " << i << ", j = " << j << ", lambda = " << lambda << std::endl; 
+			// Rcout << "pivot_i = " << low_i->second << ", pivot_j = " << low_j->second << std::endl; 
+			// Rcout << "low_j = " << low_j->first << std::endl; 
+			// R.add_scaled_col(i, j, j, -lambda);
+			V.add_scaled_col(i, j, j, -lambda);
+			R.cancel_lowest(j, i);
+			++reduction_stats[0]; // Keep track of column operations
+			// auto actual_low_i = R.low(i);
+			// if (actual_low_i){
+			// 	Rcout << "i has low entry: " << actual_low_i->first << std::endl;  
+			// } else {
+			// 	Rcout << "i has no low entry" << std::endl;  
+			// }
+			// R.add_cols(i,j,j);
+			// V.add_cols(i,j,j);
+			// auto new_low_j = R.low(j);
+			// if (new_low_j && new_low_j->first == low_j->first){
+			// 	Rcout << low_j->first << ":" << low_j->second << " -> " << new_low_j->first << " : " << new_low_j->second << std::endl; 
+			// 	throw std::invalid_argument("Reduction failed.");
+			// }
+			// R.add_scaled_col(i, j, j, -lambda);
+			// V.add_scaled_col(i, j, j, -lambda);
+			// break;
 		}
 	}
 	return; 
@@ -139,7 +162,7 @@ using std::vector;
 
 // Restore right 
 template< PermutableMatrix Matrix, typename Iter >
-void restore_right(Matrix& R, Matrix& V, Iter bi, const Iter ei, vector< typename Matrix::entry_t >& dr, vector< typename Matrix::entry_t >& dv){
+int restore_right(Matrix& R, Matrix& V, Iter bi, const Iter ei, vector< typename Matrix::entry_t >& dr, vector< typename Matrix::entry_t >& dv){
 	using entry_t = typename Matrix::entry_t;
 
 	// Start with donor columns
@@ -148,10 +171,11 @@ void restore_right(Matrix& R, Matrix& V, Iter bi, const Iter ei, vector< typenam
 	dr.clear(); dv.clear();
 	R.write_column(donor_idx, std::back_inserter(dr));
 	V.write_column(donor_idx, std::back_inserter(dv));
-	if (std::distance(bi, ei) <= 1){ return; }
+	if (std::distance(bi, ei) <= 1){ return 0; }
 
 	// Apply the donor concept
-	std:advance(bi, 1);
+	int nr = 0; 
+	std::advance(bi, 1);
 	auto new_dr = vector< entry_t >(), new_dv = vector< entry_t >();
 	for (size_t k = *bi; bi != ei; ++bi){
 		auto new_low_index = R.low_index(k);
@@ -162,7 +186,9 @@ void restore_right(Matrix& R, Matrix& V, Iter bi, const Iter ei, vector< typenam
 		V.write_column(donor_idx, std::back_inserter(new_dv));
 
 		// Add the columns
-		R.add_cols(k, donor_idx); V.add_cols(k, donor_idx);
+		R.add_cols(donor_idx, k, k); 
+		V.add_cols(donor_idx, k, k);
+		++nr;
 
 		// Replace the donor columns
 		if ((d_low_index && new_low_index) && *d_low_index > *new_low_index){
@@ -171,7 +197,150 @@ void restore_right(Matrix& R, Matrix& V, Iter bi, const Iter ei, vector< typenam
 			dv.swap(new_dv);
 		}
 	}
+	return(nr);
 }
+
+// Restore left
+// Restores columns [b, e) of matrices R and V to valid states 
+template< PermutableMatrix Matrix, typename Iter >
+int restore_left(Matrix& R, Matrix& V, Iter b, const Iter e){
+	using F = typename Matrix::value_type;
+	using entry_t = typename Matrix::entry_t;
+	using low_entry = typename std::optional< pair< size_t, F > >; 
+	const size_t n = std::distance(b, e);
+	if (n <= 1){ return 0; }
+	
+	struct LowPair {
+		size_t column_index; 
+		optional< pair< size_t, F > > low_entry;
+	};
+	
+	// First sort the (column index, low entry) elements in increasing order
+	auto K = vector< LowPair >();
+	K.reserve(std::distance(b, e));
+	std::for_each(b, e, [&](auto j){ K.push_back({ j, R.low(j) }); });
+	const auto low_cmp = [](const LowPair& le1, const LowPair& le2){
+		if (!le1.low_entry){ return(true); }
+		if (!le2.low_entry){ return(false); }
+		if (le1.low_entry->first == le2.low_entry->first){ return(le1.column_index < le2.column_index); }
+		return(le1.low_entry->first < le2.low_entry->second); 
+	};
+	std::sort(K.begin(), K.end(), low_cmp);
+	
+	// Perform the reductions on (l, r)
+	int nr = 0; 
+	LowPair lp = K[n-2], rp = K[n-1];
+	while(lp.low_entry && rp.low_entry && lp.low_entry->first == rp.low_entry->first){
+		R.cancel_lowest(rp.column_index, lp.column_index);
+		V.add_scaled_col(lp.column_index, rp.column_index, rp.column_index, 1);
+		K.pop_back(); K.pop_back();
+		++nr;
+		
+		// column l is reduced: reinsert updated entry for r 
+		LowPair updated_lp = { rp.column_index, R.low(rp.column_index) };
+		K.insert(std::upper_bound(K.begin(), K.end(), updated_lp, low_cmp), updated_lp);
+	}
+	return(nr);
+}
+
+auto move_right_permutation(size_t i, size_t j, const size_t n) -> std::vector< size_t > {
+  if (i > j){ throw std::invalid_argument("invalid");}
+  std::vector< size_t > v(n);
+  std::iota(v.begin(), v.end(), 0);
+  std::rotate(v.begin()+i, v.begin()+i+1, v.begin()+j+1);
+  return(v);
+}
+
+
+auto move_left_permutation(size_t i, size_t j, const size_t n) -> std::vector< size_t >{
+  if (i < j){ throw std::invalid_argument("invalid");}
+  std::vector< size_t > v(n);
+  std::iota(v.begin(), v.end(), 0);
+  std::rotate(v.rbegin()+(n-(i+1)), v.rbegin()+(n-i), v.rbegin()+(n-j));
+  return(v);
+}
+
+template< PermutableMatrix Matrix >
+int move_left_local(Matrix& R1, Matrix& V1, Matrix& R2, Matrix& V2, const size_t i, const size_t j){
+	using entry_t = typename Matrix::entry_t; 
+	if (i == j){ return 0; }
+	if (i < j){ throw std::invalid_argument("Invalid pair (i,j) given."); }
+	const size_t nc = V1.dim().second;
+	
+	// Remove non-zero row entries in column i of V 
+	auto K = vector< size_t >();
+	for (size_t r = i; r > j; --r){
+		const size_t ri = r - 1; 
+		std::optional< entry_t > next_low = V1.find_in_col(i, ri);
+		if (next_low && next_low.value().second != 0){
+			V1.add_scaled_col(ri, ri, i);
+			R1.add_scaled_col(ri, ri, i);
+			K.push_back(ri+1); // Because all row indices will be shifted up one
+		}
+	}
+
+	// Apply permutation PRP^T, PVP^T
+	vector< size_t > p = move_left_permutation(i, j, nc);
+	R1.permute_cols(p.begin(), p.end());
+	V1.permute(p.begin(), p.end());
+	
+	// Restore R to a valid state
+	K.push_back(j);
+	int nr = restore_left(R1, V1, K.begin(), K.end());
+	return(nr + K.size());
+}
+
+template< PermutableMatrix Matrix >
+int move_right_local(Matrix& R1, Matrix& V1, Matrix& R2, Matrix& V2, const size_t i, const size_t j){
+	using entry_t = typename Matrix::entry_t; 
+	if (i == j){ return 0; }
+	if (i > j){ throw std::invalid_argument("Invalid pair (i,j) given."); }
+	const size_t nc1 = R1.dim().second;
+	const size_t nc2 = R2.dim().second;
+	
+	// Collect indices I
+	auto I = vector< size_t >();
+	V1.row(i, [&](auto col_idx, auto v){
+		if ((col_idx >= i) && (col_idx <= j)){ I.push_back(col_idx); }
+	});
+
+	// Collect indices J
+	auto J = vector< size_t >();
+	for (size_t c = 0; c < nc2; ++c){
+		auto low_idx = R2.low_index(c);
+		if (low_idx && (*low_idx) >= i && (low_idx) <= j && R2(i,c) != 0){
+			J.push_back(c);
+		}
+	}
+	
+	// Restore invariants to columns affected by I
+	auto dr1 = vector< entry_t >();
+	auto dv1 = vector< entry_t >();
+	int nr = restore_right(R1, V1, I.begin(), I.end(), dr1, dv1); // don't wrap in if condition
+
+	// Restore invariants to columns/rows affected by J
+	if (!J.empty()){
+		auto dr2 = vector< entry_t >();
+		auto dv2 = vector< entry_t >();
+		nr += restore_right(R2, V2, J.begin(), J.end(), dr2, dv2);
+	}
+
+	// Apply permutations
+	vector< size_t > p = move_right_permutation(i, j, nc1);
+	R1.permute_cols(p.begin(), p.end());
+	V1.permute(p.begin(), p.end());
+	R2.permute_rows(p.begin(), p.end());
+	
+	// Apply permutations and assign donors
+	// Note: this is not counted towards 'nr' because this can be made O(1) w/ move semantics
+	// and because no field operations are counted
+	apply_permutation(dr1.begin(), dr1.end(), p.begin());
+	apply_permutation(dv1.begin(), dv1.end(), p.begin());
+	R1.assign_column(j, dr1.begin(), dr1.end());
+	V1.assign_column(j, dv1.begin(), dv1.end());
+	return(nr);
+}
+
 
 // Performs a sequence of moves (i,j) on the pair (R1, V1), correcting (R2, V2) as necessary. 
 template< PermutableMatrix Matrix, typename Iter, typename Lambda >
@@ -181,57 +350,23 @@ void move_schedule_local(Matrix& R1, Matrix& V1, Matrix& R2, Matrix& V2, Iter sb
 	const size_t nr1 = R1.dim().first;
 	const size_t nc1 = R1.dim().second;
 	const size_t nr2 = R2.dim().first;
-	const size_t nc2 = R2.dim().second;
 	if (nc1 != nr2){ throw std::invalid_argument("Number of rows in R2 must match number of columns in R1."); }
 	if (nc1 == 0 || nr1 == 0){ return; }
 	if (std::distance(sb,se) < 2 || std::distance(sb,se) % 2 != 0){ throw std::invalid_argument("Pairs of indices must be passed."); }
 
+	int nr = 0; 
 	for (size_t i, j; sb != se; sb += 2){
 		i = *sb, j = *(sb+1);
 		if (i == j){ continue; }
-		if (i > j || i >= (nc1-1) || j >= nc1){  throw std::invalid_argument("Invalid pairs (i,j) passed."); }
-		
-		// Collect indices I
-		auto I = vector< size_t >();
-		V1.row(i, [&](auto col_idx, auto v){
-			if ((col_idx >= i) && (col_idx <= j)){ I.push_back(col_idx); }
-		});
-
-		// Collect indices J
-		auto J = vector< size_t >();
-		for (size_t c = 0; c < nc2; ++c){
-			auto low_idx = R2.low_index(c);
-			if (low_idx && (*low_idx) >= i && (low_idx) <= j && R2(i,c) != 0){
-				J.push_back(c);
-			}
+		if (i >= nc1 || j >= nc1){  throw std::invalid_argument("Invalid pairs (i,j) passed."); }
+		// if (i > j || i >= (nc1-1) || j >= nc1){  throw std::invalid_argument("Invalid pairs (i,j) passed."); }
+		if (i < j){
+			nr += move_right_local(R1, V1, R2, V2, i, j);
+		} else {
+			nr += move_left_local(R1, V1, R2, V2, i, j);
 		}
-		
-		// Restore invariants to columns affected by I
-		auto dr1 = vector< entry_t >();
-		auto dv1 = vector< entry_t >();
-		restore_right(R1, V1, I.begin(), I.end(), dr1, dv1); // don't wrap in if condition
-
-		// Restore invariants to columns/rows affected by J
-		if (!J.empty()){
-			auto dr2 = vector< entry_t >();
-			auto dv2 = vector< entry_t >();
-			restore_right(R2, V2, J.begin(), J.end(), dr2, dv2);
-		}
-
-		// Apply permutations
-		vector< size_t > p(nc1);
-		std::iota(p.begin(), p.end(), 0);
-		std::rotate(p.begin()+i, p.begin()+i+1, p.begin()+j);
-
-		R1.permute_cols(p.begin(), p.end());
-		V1.permute(p.begin(), p.end());
-		R2.permute_rows(p.begin(), p.end());
-
-		// Apply permutations and assign donors
-		apply_permutation(dr1.begin(), dr1.end(), p.begin());
-		apply_permutation(dv1.begin(), dv1.end(), p.begin());
-		R1.assign_column(j, dr1.begin(), dr1.end());
-		V1.assign_column(j, dv1.begin(), dv1.end());
+		// f(nr);
+		nr = 0; 
 	}
 	
 }

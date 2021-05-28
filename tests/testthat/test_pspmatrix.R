@@ -1,33 +1,32 @@
-A <- phtools::psp_matrix(dims = c(10,10))
-
-
-A$insert(5,5, 1)
+testthat::test_that("can construct a matrix", {
+	testthat::expect_silent(dart::psp_matrix(dims = c(10,10)))
+	A <- dart::psp_matrix(dims = c(10,10))
+	testthat::expect_true("PspMatrix" %in% class(A))
+})
 
 testthat::test_that("Matrix is valid", {
+	A <- dart::psp_matrix(dims = c(10,10))
 	all(A$otc[A$cto+1] == seq(A$n_rows)-1L)
 })
 
 testthat::test_that("Can remove zeroed entries", {
-	A <- phtools::psp_matrix(dims = c(3,3))
-	A$insert(0,0, TRUE)
-	A$insert(1,0, TRUE)
-	A$add_columns(1,0)
-	A$add_columns(1,0)
-	A$remove(1,1)
+	A <- dart::psp_matrix(dims = c(3,3))
+	A$matrix$insert(0,0, TRUE)
+	A$matrix$insert(1,0, TRUE)
+	A$matrix$add_columns(1,0)
+	A$matrix$add_columns(1,0)
+	A$matrix$remove(1,1)
 })
 
 testthat::test_that("Can clean zeroed entries", {
-	A <- phtools::psp_matrix(dims = c(5,5))
-	A$insert(3,3,TRUE)
-	A$insert(2,3,TRUE)
-	A$add_columns(4,3)
-	A$add_columns(4,3)
-	A$as.Matrix()
-	
-	testthat::expect_equal(A$nnz, 2L)
-	A$print()
-	A$clean(FALSE)
-	
+	A <- dart::psp_matrix(dims = c(5,5))
+	A$matrix$insert(3,3,TRUE)
+	A$matrix$insert(2,3,TRUE)
+	A$matrix$add_columns(4,3)
+	A$matrix$add_columns(4,3)
+	testthat::expect_equal(A$matrix$nnz, 4L)
+	testthat::expect_silent(A$matrix$clean(0))
+	testthat::expect_equal(A$matrix$nnz, 2L)
 })
 
 testthat::test_that("Can do random operations", {

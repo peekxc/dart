@@ -8,7 +8,12 @@
 #' The filtration is expected to be given as list of a simplices.  
 #' @export
 boundary_matrix <- function(x, dim="all", labeled=TRUE, field=c("mod2", "integer", "real")){
-	stopifnot(is.list(x))
+	
+	# if (is.list(x)){
+	# 	
+	# } else if ("Rcpp_ImplicitFiltration" %in% class(x)){
+	# 	
+	# }
 	if (!missing(dim) && is.numeric(dim)){
 		di <- sapply(x, length)
 		nv <- sum(di == 1L)

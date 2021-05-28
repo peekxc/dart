@@ -8,7 +8,7 @@
 #' @export
 PspMatrix <- R6::R6Class("PspMatrix", list(
   matrix = NULL, 
-  initialize = function(i=NULL, j=NULL, x=NULL, dims, type=c("bool", "integer", "numeric")){
+  initialize = function(i=NULL, j=NULL, x=NULL, dims=NULL, type=c("bool", "integer", "numeric")){
 		ijx_supplied <- all(!c(missing(i), missing(j), missing(x)))
 		matrix_supplied <- FALSE
   	if (!missing(x) && !is.null(dim(x)) && missing(i) && missing(j)){
@@ -69,7 +69,7 @@ PspMatrix$set("public", "as.Matrix", function(type="CSC") {
 #' nnz(A) = number of non-zero entries in A.
 #' @import Matrix 
 #' @export
-psp_matrix <- function(i=NULL, j=NULL, x=NULL, dims, type=c("bool", "integer", "numeric")){
+psp_matrix <- function(i=NULL, j=NULL, x=NULL, dims=NULL, type=c("bool", "integer", "numeric")){
 	m <- do.call(PspMatrix$new, as.list(match.call())[-1])
 	return(m)
 }

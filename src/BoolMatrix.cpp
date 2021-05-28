@@ -14,6 +14,7 @@ struct BoolMatrix {
 	using F = PspBoolMatrix::value_type;
 	using value_type = F; 
 	using entry_t = PspBoolMatrix::entry_t;
+	// using optional< pair< size_t, entry_t > >
 	
 	PspBoolMatrix& m;
 	BoolMatrix(PspBoolMatrix& pm) : m(pm){ };
@@ -34,8 +35,22 @@ struct BoolMatrix {
 	}
 	// a.add_scaled_col(size_t(0), size_t(0), F(0));
 	// (lambda * col(i)) + col(j) -> col(j)
-	auto add_scaled_col(size_t i, size_t j, F lambda){
-		m.add_cols(j,i);
+	// auto add_scaled_col(size_t i, size_t j, size_t k, F lambda){
+	// 	m.add_cols(i, j, k);
+	// }
+	
+	// Use column s to cancel lowest entry of t, if it exists
+	// { a.cancel_lowest(size_t(0), size_t(0)) } -> std::same_as< void >;
+	void cancel_lowest(size_t t, size_t s){
+		auto low_t = m.lowest_nonzero(t);
+		auto low_s = m.lowest_nonzero(s);
+		if (low_t && low_s && low_s->first == low_t->first){
+			m.add_cols(s, t, t);
+			// Rprintf("added columns %d to %d (s low: %d, t low: %d)\n", s, t, low_s->first, low_t->first);
+		} else {
+			Rprintf("added columns %d to %d (s low: %d, t low: %d)\n", s, t, low_s->first, low_t->first);
+			throw std::invalid_argument("Unable to cancel the lowest entry!");
+		}
 	}
 	
 	// Zero's out column j
@@ -43,14 +58,6 @@ struct BoolMatrix {
 		if (m.columns.at(j)){
 			m.columns[j]->clear();
 		}
-	}
-	
-	// Use column i to cancel lowest entry of j
-	// { a.cancel_lowest(size_t(0), size_t(0)) } -> std::same_as< void >;
-	auto cancel_lowest(size_t i, size_t j){
-		// auto low_i = low(i), low_j = low(j);
-		// auto lambda = low_j->second / low_i->second;
-		m.add_cols(j, i);
 	}
 	
 	// TODO: add cancel_lowest(size_t i, size_t j, low_entry& s_low, low_entry& t_low){
@@ -108,7 +115,27 @@ struct BoolMatrix {
 	void write_column(Args&& ... args){ m.write_column(std::forward<Args>(args)...); }
 	
 	template <typename ... Args>
-	void add_cols(Args&& ... args){ m.add_cols(std::forward<Args>(args)...); }
+	auto find_in_col(Args&& ... args) -> std::optional< pair< size_t, F > >{ 
+		return m.find_in_col(std::forward<Args>(args)...); 
+	}
+		
+	template <typename ... Args>
+	void add_cols(Args&& ... args){ 
+		// sm.print(Rcout);
+		m.add_cols(std::forward<Args>(args)...); 
+		// m.print(Rcout);
+		// m.clean(0);
+	}
+	
+	// unneeded
+	template <typename ... Args>
+	void scale_col(Args&& ... args){ }
+	
+	void add_scaled_col(size_t i, size_t j, size_t k, F lambda = true){
+		if (i != k && j != k){ throw std::invalid_argument("i or j must equal k."); }
+		add_cols(i,j,k);
+		// m.print(Rcout);
+	}
 	
 	// { a(size_t(0), size_t(0)) } -> std::same_as< F >; 
 	template <typename ... Args>
@@ -122,51 +149,51 @@ struct BoolMatrix {
 };
 
 // [[Rcpp::export]]
-void reduce_pspbool(SEXP Ds, SEXP Vs) {
-	Rcpp::XPtr< PspBoolMatrix > D_ptr(Ds);
-	Rcpp::XPtr< PspBoolMatrix > V_ptr(Vs);
-	BoolMatrix D = BoolMatrix(*D_ptr); 
-	BoolMatrix V = BoolMatrix(*V_ptr); 
+int reduce_pspbool(SEXP D_ptr, SEXP V_ptr) {
+	BoolMatrix D = BoolMatrix(*Rcpp::XPtr< PspBoolMatrix >(D_ptr)); 
+	BoolMatrix V = BoolMatrix(*Rcpp::XPtr< PspBoolMatrix >(V_ptr)); 
 	auto indices = vector< size_t >(D.dim().second);
 	std::iota(indices.begin(), indices.end(), 0);
+	reduction_stats[0] = 0; 
 	pHcol(D, V, indices.begin(), indices.end());
+	return(reduction_stats[0]);
 }
 
 // [[Rcpp::export]]
-void reduce_local_pspbool(SEXP D1s, SEXP V1s, SEXP D2s, SEXP V2s, bool clearing) {
-	Rcpp::XPtr< PspBoolMatrix > D1_ptr(D1s);
-	Rcpp::XPtr< PspBoolMatrix > V1_ptr(V1s);
-	Rcpp::XPtr< PspBoolMatrix > D2_ptr(D2s);
-	Rcpp::XPtr< PspBoolMatrix > V2_ptr(V2s);
-	BoolMatrix D1 = BoolMatrix(*D1_ptr); 
-	BoolMatrix V1 = BoolMatrix(*V1_ptr); 
-	BoolMatrix D2 = BoolMatrix(*D2_ptr); 
-	BoolMatrix V2 = BoolMatrix(*V2_ptr); 
+int reduce_local_pspbool(SEXP D1_ptr, SEXP V1_ptr, SEXP D2_ptr, SEXP V2_ptr, bool clearing) {
+	BoolMatrix D1 = BoolMatrix(*Rcpp::XPtr< PspBoolMatrix >(D1_ptr)); 
+	BoolMatrix V1 = BoolMatrix(*Rcpp::XPtr< PspBoolMatrix >(V1_ptr)); 
+	BoolMatrix D2 = BoolMatrix(*Rcpp::XPtr< PspBoolMatrix >(D2_ptr)); 
+	BoolMatrix V2 = BoolMatrix(*Rcpp::XPtr< PspBoolMatrix >(V2_ptr)); 
 	auto d1_ind = vector< size_t >(D1.dim().second);
 	auto d2_ind = vector< size_t >(D2.dim().second);
 	std::iota(d1_ind.begin(), d1_ind.end(), 0);
 	std::iota(d2_ind.begin(), d2_ind.end(), 0);
+	reduction_stats[0] = 0; 
 	if (clearing){
 		pHcol_local< true >(D1, V1, D2, V2, d1_ind.begin(), d1_ind.end(), d2_ind.begin(), d2_ind.end());
 	} else {
 		pHcol_local< false >(D1, V1, D2, V2, d1_ind.begin(), d1_ind.end(), d2_ind.begin(), d2_ind.end());
 	}
+	return(reduction_stats[0]);
 }
 
 //[[Rcpp::export]]
-void simulate_vineyard_cpp(SEXP Rs, SEXP Vs, IntegerVector schedule, Nullable< Function > f = R_NilValue){
-	Rcpp::XPtr< PspBoolMatrix > R_ptr(Rs);
-	Rcpp::XPtr< PspBoolMatrix > V_ptr(Vs);
-	BoolMatrix R = BoolMatrix(*R_ptr); 
-	BoolMatrix V = BoolMatrix(*V_ptr); 
+int simulate_vineyard_pspbool(SEXP R_ptr, SEXP V_ptr, IntegerVector schedule, Nullable< Function > f = R_NilValue){
+	BoolMatrix R = BoolMatrix(*Rcpp::XPtr< PspBoolMatrix >(R_ptr)); 
+	BoolMatrix V = BoolMatrix(*Rcpp::XPtr< PspBoolMatrix >(V_ptr)); 
 	if (f.isNotNull()){
 		Function fun(f);
 		transpose_schedule_full(R, V, schedule.begin(), schedule.end(), [&](size_t status){
 			fun(status);
 		});
+		return(0);
 	} else {
-		const auto do_nothing = [](size_t status){ return; };
-		transpose_schedule_full(R, V, schedule.begin(), schedule.end(), do_nothing);
+		const std::array< size_t, 10 > costs = { 0, 2, 2, 0, 1, 2, 0, 2, 0, 1 };
+		size_t nc = 0; 
+		const auto record_costs = [&costs, &nc](size_t status){ nc += costs[status]; };
+		transpose_schedule_full(R, V, schedule.begin(), schedule.end(), record_costs);
+		return(nc);
 	}
 }
 
@@ -208,6 +235,19 @@ bool at(PspBoolMatrix* M, size_t i, size_t j){
 	return(Mr(i,j));
 }
 
+IntegerVector find_low(PspBoolMatrix* M, size_t j){
+	auto low_j = low_entry(M, j);
+	if (low_j != -1){
+		for (size_t i = 0; i < j; ++i){
+			auto low_i = low_entry(M, i);
+			if (low_i != -1 && low_i == low_j){ 
+				return(IntegerVector::create(i, low_i));	// Note this is (column index, field value), not (row index, field value)
+			}
+		}
+	}
+	return(IntegerVector::create(-1, -1));
+}
+
 //' @export PspBoolMatrix
 RCPP_EXPOSED_CLASS_NODECL(PspBoolMatrix)
 RCPP_MODULE(PspBoolMatrix) {
@@ -235,6 +275,7 @@ RCPP_MODULE(PspBoolMatrix) {
   	// .method("permute_cols", &PspIntMatrix::permute_cols)
     .method("add_rows", &PspBoolMatrix::add_rows)
     .method("low_entry", low_entry)
+    .method("find_low", find_low)
     .method("at", at)
     .method("submatrix", &PspBoolMatrix::submatrix)
 	;

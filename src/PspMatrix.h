@@ -132,6 +132,18 @@ public:
 	// 	
 	// };
 	
+	std::optional< entry_t > find_in_col(const size_t j, const size_t r){
+		if (j >= n_cols()){ throw std::invalid_argument("Invalid column index given."); }
+		if (r >= n_rows()){ throw std::invalid_argument("Invalid row index given."); }
+		vector< entry_t >& entries = *columns.at(j);
+		auto el = std::find_if(std::begin(entries), std::end(entries), [this, r](entry_t& e){
+			return(otc[e.first] == r);
+		});
+		if (el == std::end(entries) || otc[el->first] != r){ return std::nullopt; } 
+		else {
+			return(std::make_optional(std::make_pair(otc[el->first], el->second)));
+		}
+	}
 	
 	template < typename OutputIter >
 	void write_column(size_t c, OutputIter out){
@@ -212,8 +224,8 @@ public:
 		if (i >= n_rows() || j >= n_cols()){ return; }
 		if (!bool(columns.at(j))){ return; }
 		vector< entry_t >& entries = *columns.at(j);
-		// auto el = std::lower_bound(std::begin(entries), std::end(entries), i, [this](entry_t& e, size_t index){
-		// 	return(otc[e.first] < index);
+		// auto el = std::lower_bound(std::begin(entries), std::end(entries), cto[i], [this](entry_t& e, size_t index){
+		// 	return(e.first < index);
 		// });
 		auto el = std::find_if(std::begin(entries), std::end(entries), [this, i](entry_t& e){
 			return(otc[e.first] == i);
@@ -226,19 +238,25 @@ public:
 		}
 	}
 	
-	// ( i = i + j ) 
-	void add_cols(size_t i, size_t j){
-		if (i >= n_cols() || j >= n_cols()){ throw std::invalid_argument("Invalid"); }
-		if (!bool(columns.at(i))){ columns.at(i) = std::make_unique< vector< entry_t > >(); }
-		if (!bool(columns.at(j))){ columns.at(j) = std::make_unique< vector< entry_t > >(); }
+	// Performs the column additions ( i + j -> k ) where i,j,k specify column indices. 
+	// Currently k must equal either i or j
+	void add_cols(size_t i, size_t j, size_t k){
+		if (i >= n_cols() || j >= n_cols()){ throw std::invalid_argument("Invalid indexes given"); }
+		if (k != i && k != j){ throw std::invalid_argument("target column must be one of the given columns."); }
 		
-		auto first1 = columns[i]->begin(), last1 = columns[i]->end();
-		auto first2 = columns[j]->begin(), last2 = columns[j]->end();
+		// Decide on source and target columns
+		const size_t s = i == k ? j : i; 
+		const size_t t = k;
+		if (!bool(columns.at(s))){ columns.at(s) = std::make_unique< vector< entry_t > >(); }
+		if (!bool(columns.at(t))){ columns.at(t) = std::make_unique< vector< entry_t > >(); }
+		
+		auto first1 = columns[t]->begin(), last1 = columns[t]->end();
+		auto first2 = columns[s]->begin(), last2 = columns[s]->end();
 		vector< entry_t > to_add; 
 		while(true){
 			if (first1 == last1){ 
 				nnz += std::distance(first2, last2);
-				std::copy(first2, last2, std::back_inserter(*columns[i])); 
+				std::copy(first2, last2, std::back_inserter(*columns[t])); 
 				break;
 			}
 			if (first2 == last2){ break; }
@@ -257,7 +275,7 @@ public:
 		}
 		// Add entries retroactively that would've invalidated iterators above
 		for (auto e: to_add){
-			insert(otc[e.first], i, e.second);
+			insert(otc[e.first], t, e.second);
 		}
 	}	
 	
@@ -308,20 +326,31 @@ public:
 	// Returns an optional containing the lowest-nonzero entry of column j
 	optional< pair< size_t, value_type > > lowest_nonzero(const size_t j) const {
 		// if column is empty, return nullopt
-		if (column_empty(j)){ return(std::nullopt); }
+		// if (column_empty(j)){ return(std::nullopt); }
+		if (j >= n_cols()){ throw std::invalid_argument("Invalid column index"); }
+		if (!bool(columns[j]) || columns[j]->size() == 0){ return(std::nullopt); }
 		
-		// Get max non-zero entry
+		// Get non-zero entry w/ maximum row index
 		const auto& c = *columns[j];
-		auto me = std::max_element(c.begin(), c.end(), [this](auto& e1, auto& e2){
-			if (e1.second == 0){ return(true); }
-			if (e2.second == 0){ return(false); }
-			return otc[e1.first] < otc[e2.first];
-		});
+		size_t best = 0;
+		for (size_t ri = 0; ri < c.size(); ++ri){
+			// std::cout << "checking: " << ri << ", " << (c[ri].second != 0) << ", " << (otc[c[ri].first] >= best) << std::endl;
+			if ((c[ri].second != 0) && otc[c[ri].first] >= best){
+				best = ri; 
+			}
+		}
+		if (best == -1 || equals_zero(c[best].second)){ return(std::nullopt); }
+		return std::make_optional(std::make_pair(otc[c[best].first], c[best].second));
+		// auto me = std::max_element(c.begin(), c.end(), [this](auto& e1, auto& e2){
+		// 	if (equals_zero(e1.second)){ return(true); }
+		// 	if (equals_zero(e2.second)){ return(false); }
+		// 	return otc[e1.first] < otc[e2.first];
+		// });
 		
 		// if max element is a (stored) zero, return nullopt
-		if ((*me).second == 0){ return(std::nullopt); }
-		
-		return(std::make_optional(std::make_pair(otc[(*me).first], (*me).second)));
+		// if (equals_zero((*me).second)){ return(std::nullopt); }
+		// 
+		// return(std::make_optional(std::make_pair(otc[(*me).first], (*me).second)));
 	}
 	
 	void swap_rows(size_t i, size_t j){
@@ -455,7 +484,7 @@ public:
 		if (!bool(columns.at(j))){ columns.at(j) = std::make_unique< vector< entry_t > >(); }
 		vector< entry_t >& entries = *columns.at(j);
 		auto o_idx = cto[i]; // original index to search for
-		auto el = std::lower_bound(std::begin(entries), std::end(entries), o_idx, [this](entry_t& e, size_t index){
+		auto el = std::lower_bound(std::begin(entries), std::end(entries), o_idx, [](entry_t& e, size_t index){
 			return(e.first < index);
 		});
 		if (el == std::end(entries) || el->first != o_idx){

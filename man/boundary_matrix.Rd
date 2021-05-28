@@ -11,6 +11,15 @@ boundary_matrix(
   field = c("mod2", "integer", "real")
 )
 }
+\arguments{
+\item{x}{list of simplices.}
+
+\item{dim}{dimension of boundary matrix desired}
+
+\item{labeled}{whether to add simplex labels to the corresponding matrices.}
+
+\item{field}{intended}
+}
 \description{
 Constructs filtration boundary matrices
 }

@@ -1,5 +1,5 @@
 ---
-title: "R Notebook"
+title: "2d Persistence"
 output: html_notebook
 ---
 
@@ -109,21 +109,25 @@ stratified_sample <- function(x, m, f, n.strata=25L){
 # image(matrix(Y[which.max(X[,2]),], nrow = 3), col = gray.colors(9, start = 0, end = 1))
 ```
 
-```{r}
+```{r klein}
 library("dart")
 #X <- R.matlab::readMat("~/Downloads/nk")$n50000Dct
 X <- R.matlab::readMat("~/Downloads/n50000Dct.mat")$n50000Dct
 # X <- R.matlab::readMat("~/Downloads/nk15c30Dct.mat")$nk15c30Dct
 
-## Rips parameters
-n <- 300 
-max_diam <- 0.6
+## Parameters
+n <- 250 
+max_diam <- 0.8
+xbin <- 8L
+ybin <- 8L
 
 ## Density estimate
 k <- 300L
 Vd <- function(d){ (pi^(d/2))/(gamma(d/2.0 + 1)) }
-x_knn <- RANN::nn2(X, k = k)
-knn_density <- (k/nrow(X))*(1/(Vd(ncol(X))*x_knn$nn.dists[,k]))
+knn_density <- local({
+	x_knn <- RANN::nn2(X, k = k)
+	(k/nrow(X))*(1/(Vd(ncol(X))*x_knn$nn.dists[,k]))
+})
 
 ## Stratified maxmin sampling of X
 sample_idx <- stratified_sample(X, m = n, f = knn_density)
@@ -134,7 +138,7 @@ plot(x, pch = 20, col = bin_col(x = f, col_pal = rainbow(100, start = 0, end = 4
 # sample_idx <- sample(1:nrow(X), size = 500)
 
 ## Get line arrangement + dual graph 
-ro <- bigraded_betti(x = x, f = f, H = 1L, xbin = 15L, ybin = 15L, max_dist = max_diam, 
+ro <- bigraded_betti(x = x, f = f, H = 1L, xbin = xbin, ybin = ybin, max_dist = max_diam, 
 										 save.path = "~/pc_f.txt")
 
 
@@ -142,8 +146,16 @@ LA <- dual_line_arrangement(x = ro)
 singularities <- sapply(LA, sf::st_area) <= .Machine$double.eps
 LA <- sf::st_geometrycollection(LA[!singularities])
 
-dg <- t(dual_graph(LA))
+dg <- dual_graph(LA)
 centroids <- do.call(rbind, lapply(LA, sf::st_centroid))
+
+plot(LA, col = "lightgray")
+for (i in 1:nrow(dg)){ 
+	segments(x0 = centroids[dg[i,1],1], y0 = centroids[dg[i,1],2], 
+					 x1 = centroids[dg[i,2],1], y1 = centroids[dg[i,2],2], 
+					 col = rainbow(nrow(dg))[i], lwd = 0.75) 
+}
+
 
 ## Plot projection of data 
 plot(x, pch = 20, col = adjustcolor("black", alpha.f = 0.50))
@@ -166,30 +178,37 @@ R <- simplextree::rips(dx, dim = 2, eps = max_diam, filtered = FALSE)
 FI <- new(dart:::ImplicitFiltration, R$as_XPtr(), dx[rankr::rank_comb(t(R$edges), n = R$n_simplices[1])])
 S <- FI$simplices 
 dist_f <- FI$grading
-
-
 dens_f <- sapply(S, function(x){ max(f[x]) })
 f_simp <- unlist(simplex_to_str(S))
 
 ## For each vertex in the dual graph, use point-line duality to get filtration 
 fibers <- cbind(m=centroids[,1], b=-centroids[,2]) ## use duality here
-minimal_bigrades <- structure(cbind(dens_f, dist_f), dimnames = list(f_simp, NULL))
+minimal_bigrades_t <- t(structure(cbind(dens_f, dist_f), dimnames = list(f_simp, NULL)))
 
 ## project onto each of the fibers
-fibered_filtrations <- lapply(seq(nrow(fibers)), function(fi){
-	print(fi)
-	fiber <- fibers[fi,]
-	proj_pts <- dart:::push_map(t(minimal_bigrades), m = fiber[1], b = fiber[2])
-	# proj_pts <- dart:::proj_L(minimal_bigrades, m = fiber[1], b = fiber[2])
-	# dist_to_src <- as.vector(proxy::dist(matrix(c(0, fiber[2]), ncol = 2), y = proj_pts))
-	f_simp[order(proj_pts[,3])]
-})
+# fibered_filtrations <- lapply(seq(nrow(fibers)), function(fi){
+# 	print(fi)
+# 	fiber <- fibers[fi,]
+# 	proj_pts <- dart:::push_map(minimal_bigrades_t, m = fiber[1], b = fiber[2])
+# 	# proj_pts <- dart:::proj_L(minimal_bigrades, m = fiber[1], b = fiber[2])
+# 	# dist_to_src <- as.vector(proxy::dist(matrix(c(0, fiber[2]), ncol = 2), y = proj_pts))
+# 	# f_simp[order(proj_pts[,3])]
+# 	order(proj_pts[,3])
+# })
 
 ## Get spearman distance weights on dual graph edges
-S_dist <- apply(dg, 1, function(i){
-  spearman_dist(fibered_filtrations[[i[1]]], fibered_filtrations[[i[2]]])
+S_dist <- apply(dg, 1, function(e){
+	bi0 <- dart:::push_map(minimal_bigrades_t, m = fibers[e[1],1], b = fibers[e[1],2])
+	bi1 <- dart:::push_map(minimal_bigrades_t, m = fibers[e[2],1], b = fibers[e[2],2])
+  spearman_dist(order(bi0[,3]), order(bi1[,3]))
 })
 names(S_dist) <- apply(dg, 1, simplex_to_str)
+
+K_dist <- apply(dg, 1, function(e){
+	bi0 <- dart:::push_map(minimal_bigrades_t, m = fibers[e[1],1], b = fibers[e[1],2])
+	bi1 <- dart:::push_map(minimal_bigrades_t, m = fibers[e[2],1], b = fibers[e[2],2])
+  kendall_dist(order(bi0[,3]), order(bi1[,3]))
+})
 
 ## Get starting point
 e0 <- which(sapply(LA, function(el) { 
@@ -199,7 +218,7 @@ e0 <- which(sapply(LA, function(el) {
 ## Build the MST 2-approximation
 G1 <- igraph::graph.empty(n = nrow(centroids), directed = FALSE)
 for (i in seq(nrow(dg))){
-	G1 <- igraph::add_edges(G1, dg[i,], weight = S_dist[i])
+	G1 <- igraph::add_edges(G1, dg[i,], weight = K_dist[i])
 }
 mst_path <- igraph::mst(G1, weights = igraph::E(G1)$weight)
 el <- igraph::as_edgelist(mst_path)
@@ -262,7 +281,7 @@ for (i in seq(length(vertex_path)-1)){
 # diagram::curvedarrow(centroids[1,], centroids[2,])
 ```
 
-```{r}
+```{r moves reduction}
 ## Deduce form the path which decompositions to save in memory
 needs_saved <- !sapply(2:nrow(path), function(i){ path[i,1] == path[i-1,2] })
 needs_saved <- path[c(FALSE, needs_saved),1]
@@ -272,15 +291,15 @@ saved <- list()
 M1 <- structure(list(matrix(0, ncol = 0, nrow = 2)), names = e0)
 M2 <- structure(list(matrix(0, ncol = 0, nrow = 2)), names = e0)
 bv <- as.character(e0) ## base vertex
-di <- unname(sapply(str_to_simplex(row.names(minimal_bigrades)), length)-1L)
+di <- unname(sapply(str_to_simplex(colnames(minimal_bigrades_t)), length)-1L)
 s1 <- which(di==1)
 s2 <- which(di==2)
-bigrades <- dart:::push_map(t(minimal_bigrades), m = fibers[e0,1], b = fibers[e0,2])
+bigrades <- dart:::push_map(minimal_bigrades_t, m = fibers[e0,1], b = fibers[e0,2])
 p1 <- order(bigrades[s1,3])
 p2 <- order(bigrades[s2,3])
 for (i in 2:nrow(path)){
 	v <- path[i,2]
-	bigrades <- dart:::push_map(t(minimal_bigrades), m = fibers[v,1], b = fibers[v,2])
+	bigrades <- dart:::push_map(minimal_bigrades_t, m = fibers[v,1], b = fibers[v,2])
 	q1 <- order(bigrades[s1,3])
 	q2 <- order(bigrades[s2,3])
 	S1 <- greedy_min_cross2(p1, q1, strategy = "pairwise")
@@ -317,108 +336,206 @@ for (i in 2:nrow(path)){
 # 	# all(RV$R[[1]][,r1_cols] == 0)
 # 	RV$V[[1]][,r1_cols] <- RV$R[[2]][,r2_cols]
 # }
-
+slex_order <- match(
+	as.list(level_order(R)), 
+	lapply(str_to_simplex(colnames(minimal_bigrades_t)), as.integer)
+)
+moves_nc <- 0L
 ## Perform the sequence of moves
 for (v in names(M1)){
-	v <- names(M1)[[1]]
-	D <- boundary_matrix(str_to_simplex(fibered_filtrations[[as.integer(v)]]), dim = c(1,2,3))
-	RV <- dart::reduce(D, output = "RV", validate = FALSE)
-	RV$R[[3]] <- D$matrix[[3]]
+	vi <- as.integer(v)
+	P <- dart:::push_map(x = minimal_bigrades_t, m = fibers[vi,1], b = fibers[vi,2])
+	FI <- new(dart:::ImplicitFiltration, R$as_XPtr(), P[slex_order,3])
+	
+	D1_psp <- dart::psp_matrix(x = dart:::boundary_matrix_fi(filtration = FI$as_XPtr(), k = 1))
+	D2_psp <- dart::psp_matrix(x = dart:::boundary_matrix_fi(filtration = FI$as_XPtr(), k = 2))
+	V1_psp <- dart::psp_matrix(x = Matrix::Diagonal(D1_psp$matrix$n_cols))
+	V2_psp <- dart::psp_matrix(x = Matrix::Diagonal(D2_psp$matrix$n_cols))
+	discard <- dart:::reduce_local_pspbool(
+		D1_ptr = D1_psp$matrix$as_XPtr(), V1_ptr = V1_psp$matrix$as_XPtr(), 
+		D2_ptr = D2_psp$matrix$as_XPtr(), V2_ptr = V2_psp$matrix$as_XPtr(),
+		clearing = TRUE
+	)
+	# RV <- dart::reduce(D, output = "RV", validate = FALSE)
+	
+	## TODO: make faster when this becomes bottleneck
+	D1_psp$matrix$clean(0)
+	D2_psp$matrix$clean(0)
+	V1_psp$matrix$clean(0)
+	V2_psp$matrix$clean(0)
+	RV <- list(
+		R = list(as(D1_psp, "sparseMatrix"), as(D2_psp, "sparseMatrix")), 
+		V = list(as(V1_psp, "sparseMatrix"), as(V2_psp, "sparseMatrix"))
+	)	
+	RV$R[[3]] <- Matrix::Matrix(matrix(0, ncol = 0, nrow = R$n_simplices[3]), sparse = TRUE)
 	RV$V[[3]] <- Matrix::Matrix(matrix(0, ncol = 0, nrow = 0), sparse = TRUE)
 	
-	## TODO: remove this once permutable sp matrices are supported
-	RV$R[[1]] <- as(RV$R[[1]], "sparseMatrix")
-	RV$R[[2]] <- as(RV$R[[2]], "sparseMatrix")
-	RV$V[[1]] <- as(RV$V[[1]], "sparseMatrix")
-	RV$V[[2]] <- as(RV$V[[2]], "sparseMatrix")
-		
-		ncol_2 <- vector("integer", length = ncol(M2[[v]]))
-		cc <- 0L
-		execute_schedule(R = RV$R[2:3], V = RV$V[2:3], S = M2[[v]], f = function(fbm_decomp){ 
-			cc <<- cc + 1L
-			ncol_2[cc] <<- fbm_decomp$m 
-			print(cc)
-		})
-		
-		ncol_1 <- vector("integer", length = ncol(M1[[v]]))
-		cc <- 0L
-		execute_schedule(R = RV$R[1:2], V = RV$V[1:2], S = M1[[v]], f = function(fbm_decomp){ 
-			cc <<- cc + 1L
-			ncol_1[cc] <<- fbm_decomp$m 
-			print(cc)
-		})
-}
+	moves_nc2 <- vector("integer", length = ncol(M2[[v]]))
+	cc <- 0L
+	execute_schedule(R = RV$R[2:3], V = RV$V[2:3], S = M2[[v]], f = function(fbm_decomp){
+		cc <<- cc + 1L
+		moves_nc2[cc] <<- fbm_decomp$m
+		print(cc)
+	})
 
+	moves_nc1 <- vector("integer", length = ncol(M1[[v]]))
+	cc <- 0L
+	execute_schedule(R = RV$R[1:2], V = RV$V[1:2], S = M1[[v]], f = function(fbm_decomp){
+		cc <<- cc + 1L
+		moves_nc1[cc] <<- fbm_decomp$m
+		print(cc)
+	})
+	moves_nc <- moves_nc <- sum(moves_nc1) + sum(moves_nc2)
+	print(v)
+}
+	# RV$R[[3]] <- D$matrix[[3]]
+	# RV$V[[3]] <- Matrix::Matrix(matrix(0, ncol = 0, nrow = 0), sparse = TRUE)
+	# 
+	# ## TODO: remove this once permutable sp matrices are supported
+	# RV$R[[1]] <- as(RV$R[[1]], "sparseMatrix")
+	# RV$R[[2]] <- as(RV$R[[2]], "sparseMatrix")
+	# RV$V[[1]] <- as(RV$V[[1]], "sparseMatrix")
+	# RV$V[[2]] <- as(RV$V[[2]], "sparseMatrix")
+	# 	
+	# ncol_2 <- vector("integer", length = ncol(M2[[v]]))
+	# cc <- 0L
+	# execute_schedule(R = RV$R[2:3], V = RV$V[2:3], S = M2[[v]], f = function(fbm_decomp){ 
+	# 	cc <<- cc + 1L
+	# 	ncol_2[cc] <<- fbm_decomp$m 
+	# 	print(cc)
+	# })
+	# 
+	# ncol_1 <- vector("integer", length = ncol(M1[[v]]))
+	# cc <- 0L
+	# execute_schedule(R = RV$R[1:2], V = RV$V[1:2], S = M1[[v]], f = function(fbm_decomp){ 
+	# 	cc <<- cc + 1L
+	# 	ncol_1[cc] <<- fbm_decomp$m 
+	# 	print(cc)
+	# })
+
+```
+
+```{r naive reduction}
 ## Use naive reduction 
+st <- simplextree::simplex_tree(str_to_simplex(colnames(minimal_bigrades_t)))
 ncol_reduction <- vector(mode = "integer", length = nrow(centroids))
 for (v in vertex_path){
-	D <- boundary_matrix(str_to_simplex(fibered_filtrations[[as.integer(v)]]))
-	RV <- pbgrad::reduce(D$matrix, output = "RV")
-	ncol_reduction[match(v, vertex_path)] <- RV$nc
+	bigrades <- dart:::push_map(minimal_bigrades_t, m = fibers[v,1], b = fibers[v,2])
+	FI <- new(dart:::ImplicitFiltration, st$as_XPtr(), bigrades[,3])
+	D <- dart:::boundary_matrix_fi_full(filtration = FI$as_XPtr())
+	# D <- boundary_matrix(str_to_simplex(fibered_filtrations[[as.integer(v)]]))
+	# RV <- pbgrad::reduce(D$matrix, output = "RV")
+	# RV <- pbgrad::reduce(D, output = "RV")
+	# RV <- dart::reduce(D)
+	D_psp <- dart::psp_matrix(x = D)
+	V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D)))
+	nc <- dart:::reduce_pspbool(D_psp$matrix$as_XPtr(), V_psp$matrix$as_XPtr())
+	ncol_reduction[match(v, vertex_path)] <- nc
+	print(match(v, vertex_path))
 }
-
-# 1348 = 658 + 690 
-sum(ncol_1) + sum(ncol_2)
-
 sum(ncol_reduction)
-ncol_reduction[1] + sum(ncol_1) + sum(ncol_2)
+```
 
-## Use vineyards 
-dart::vineyards_schedule
-
-
-# dart:::move_schedule_local(
-# 	r1 = RV$R[[1]]$matrix$as_XPtr(), 
-# 	v1 = RV$V[[1]]$matrix$as_XPtr(), 
-# 	r2 = RV$R[[2]]$matrix$as_XPtr(), 
-# 	v2 = RV$V[[2]]$matrix$as_XPtr(), 
-# 	schedule = matrix(c(3, 8), nrow = 2)
-# )
-lapply(seq(nrow(fibers)), function(fi){
-	fiber <- fibers[fi,]
-	proj_pts <- dart:::push_map(t(minimal_bigrades), m = fiber[1], b = fiber[2])
-	# proj_pts <- dart:::proj_L(minimal_bigrades, m = fiber[1], b = fiber[2])
-	# dist_to_src <- as.vector(proxy::dist(matrix(c(0, fiber[2]), ncol = 2), y = proj_pts))
-	f_simp[order(proj_pts[,3])]
-})
-
-
-
-
-
-## Reduce the first filtration
-dart::reduce()
-
+```{r trash}
+# # 1348 = 658 + 690 
+# sum(ncol_1) + sum(ncol_2)
+# 
+# sum(ncol_reduction)
+# ncol_reduction[1] + sum(ncol_1) + sum(ncol_2)
+# 
+# ## Use vineyards 
+# dart::vineyards_schedule
+# 
+# 
+# # dart:::move_schedule_local(
+# # 	r1 = RV$R[[1]]$matrix$as_XPtr(), 
+# # 	v1 = RV$V[[1]]$matrix$as_XPtr(), 
+# # 	r2 = RV$R[[2]]$matrix$as_XPtr(), 
+# # 	v2 = RV$V[[2]]$matrix$as_XPtr(), 
+# # 	schedule = matrix(c(3, 8), nrow = 2)
+# # )
+# lapply(seq(nrow(fibers)), function(fi){
+# 	fiber <- fibers[fi,]
+# 	proj_pts <- dart:::push_map(t(minimal_bigrades), m = fiber[1], b = fiber[2])
+# 	# proj_pts <- dart:::proj_L(minimal_bigrades, m = fiber[1], b = fiber[2])
+# 	# dist_to_src <- as.vector(proxy::dist(matrix(c(0, fiber[2]), ncol = 2), y = proj_pts))
+# 	f_simp[order(proj_pts[,3])]
+# })
+# 
+# 
+# 
+# 
+# 
+# ## Reduce the first filtration
+# dart::reduce()
+# 
 
 ```
 
 Vineyards computation along path
-```{r}
-## TODO: remove this in favor of dimension-specific moves
-simplices <- unname(str_to_simplex(rownames(minimal_bigrades)))
+```{r vineyards}
+library(simplextree)
+## Deduce form the path which decompositions to save in memory
+needs_saved <- !sapply(2:nrow(path), function(i){ path[i,1] == path[i-1,2] })
+needs_saved <- path[c(FALSE, needs_saved),1]
+
+## Plot path  
+plot(LA, col = "lightgray")
+for (i in 1:nrow(el)){ 
+	segments(x0 = centroids[el[i,1],1], y0 = centroids[el[i,1],2], 
+					 x1 = centroids[el[i,2],1], y1 = centroids[el[i,2],2], 
+					 col = rainbow(nrow(el))[i], lwd = 0.75) 
+}
+
+slex_order <- match(
+	as.list(level_order(R)), 
+	lapply(str_to_simplex(colnames(minimal_bigrades_t)), as.integer)
+)
 saved <- list()
 M <- structure(list(matrix(0, ncol = 0, nrow = 2)), names = e0)
 bv <- as.character(e0) ## base vertex
-p <- order(dart:::push_map(t(minimal_bigrades), m = fibers[e0,1], b = fibers[e0,2])[,3])
+P <- dart:::push_map(minimal_bigrades_t, m = fibers[e0,1], b = fibers[e0,2])
+p <- order(P[,3])
+
+## Cost for each vineyard update
+# status_costs <- c(2,2,0,1,2,0,2,0,1)
+# vineyard_nc <- 0L
+# save_cost <- function(status){
+# 	vineyard_nc <<- vineyard_nc + status_costs[status]
+# }
+vineyard_nc <- 0L
 for (i in 2:nrow(path)){
 	v <- path[i,2]
-	q <- order(dart:::push_map(t(minimal_bigrades), m = fibers[v,1], b = fibers[v,2])[,3])
-	S <- vineyards_schedule(simplices[p], simplices[q])
-	M[[bv]] <- cbind(M[[bv]], S)
+	Q <- dart:::push_map(minimal_bigrades_t, m = fibers[v,1], b = fibers[v,2])
+	S <- vineyards_schedule(simplices[p], simplices[order(Q[,3])])
+	schedule <- pmin(S$schedule[1,], S$schedule[2,])
+	# M[[bv]] <- cbind(M[[bv]], S$schedule)
+	FI <- new(dart:::ImplicitFiltration, R$as_XPtr(), Q[slex_order,3])
+	D <- dart:::boundary_matrix_fi_full(filtration = FI$as_XPtr())
+	D_psp <- dart::psp_matrix(x = D)
+	V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D)))
+	vineyard_nc <- vineyard_nc + dart:::simulate_vineyard_pspbool(
+		R_ptr = D_psp$matrix$as_XPtr(), V_ptr = V_psp$matrix$as_XPtr(), 
+		schedule = schedule - 1L)
+	print(i)
 	if (v %in% needs_saved){
 		print(sprintf("Saving: %d", v))
-		saved[[as.character(v)]] <- q
+		saved[[as.character(v)]] <- fibers[v,]
 	}
 	if (i != nrow(path)){
 		if (path[i,2] != path[i+1,1]){
 			print("changing base vertex")
-			bv <<- as.character(path[i+1,1]) ## change base vertex
-			p <<- saved[[as.character(path[i+1,1])]]
+			bv <- as.character(path[i+1,1]) ## change base vertex
+			c_fiber <- saved[[as.character(path[i+1,1])]]
+			p <- order(dart:::push_map(minimal_bigrades_t, m = c_fiber[1], b = c_fiber[2])[,3])
 		} else {
-			p <<- q
+			p <- q
 		}
 	}
 }
+# saveRDS(list(dataset="n50000Dct", n=n, k=k, diam=max_diam, xbin=xbin, ybin=ybin, H=1L, schedule=M), 
+# 				file = "raw/vineyards_schedule.rds")
+		
 ```
 
 "with resets"

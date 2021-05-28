@@ -44,9 +44,21 @@ struct ReducibleSpMat {
 		return(le ? std::make_optional(le->second) : std::nullopt);
 	}
 	
+	void add_cols(size_t i, size_t j, size_t k){
+		if (i != k && j != k){ throw std::invalid_argument("i or j must equal k."); }
+		const size_t s = i == k ? j : i; 
+		m.col(k) += m.col(s);
+	}
+	
 	// Adds (lambda * col(i)) + col(j) -> col(j)
-	void add_scaled_col(size_t i, size_t j, double lambda){
-		m.col(j) = m.col(i)*lambda + m.col(j);
+	void scale_col(size_t i, double lambda){
+		m.col(i) = m.col(i)*lambda;
+	}
+	
+	void add_scaled_col(size_t i, size_t j, size_t k, double lambda){
+		if (i != k && j != k){ throw std::invalid_argument("i or j must equal k."); }
+		const size_t s = i == k ? j : i; 
+		m.col(k) += m.col(s)*lambda;
 	}
 	
 	template< typename Lambda>
@@ -73,7 +85,8 @@ struct ReducibleSpMat {
 	// Cancels lowest entry of column j by setting its value = 0 using column i
 	void cancel_lowest(size_t j, size_t i){
 		if (column_empty(j) || column_empty(i)){ return; }
-		add_scaled_col(i,j, -(*low_value(j))/(*low_value(i)));
+		auto lambda = -(*low_value(j))/(*low_value(i));
+		m.col(j) += lambda*m.col(i);
 	}
 
 	// Finds a column index i + its lowest entry low_i such that i < j and low_i == low_j, if it exists

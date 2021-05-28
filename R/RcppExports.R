@@ -4,16 +4,16 @@
 #' @export PspBoolMatrix
 NULL
 
-reduce_pspbool <- function(Ds, Vs) {
-    invisible(.Call(`_dart_reduce_pspbool`, Ds, Vs))
+reduce_pspbool <- function(D_ptr, V_ptr) {
+    .Call(`_dart_reduce_pspbool`, D_ptr, V_ptr)
 }
 
-reduce_local_pspbool <- function(D1s, V1s, D2s, V2s, clearing) {
-    invisible(.Call(`_dart_reduce_local_pspbool`, D1s, V1s, D2s, V2s, clearing))
+reduce_local_pspbool <- function(D1_ptr, V1_ptr, D2_ptr, V2_ptr, clearing) {
+    .Call(`_dart_reduce_local_pspbool`, D1_ptr, V1_ptr, D2_ptr, V2_ptr, clearing)
 }
 
-simulate_vineyard_cpp <- function(Rs, Vs, schedule, f = NULL) {
-    invisible(.Call(`_dart_simulate_vineyard_cpp`, Rs, Vs, schedule, f))
+simulate_vineyard_pspbool <- function(R_ptr, V_ptr, schedule, f = NULL) {
+    .Call(`_dart_simulate_vineyard_pspbool`, R_ptr, V_ptr, schedule, f)
 }
 
 move_schedule_local <- function(r1, v1, r2, v2, schedule, f = NULL) {
@@ -30,6 +30,10 @@ reduce_local_arma <- function(D1, v1, D2, v2, clearing) {
 
 push_map <- function(x, m, b) {
     .Call(`_dart_push_map`, x, m, b)
+}
+
+boundary_matrix_fi_full <- function(filtration) {
+    .Call(`_dart_boundary_matrix_fi_full`, filtration)
 }
 
 boundary_matrix_fi <- function(filtration, k) {
@@ -130,6 +134,10 @@ SearchInStrip <- function(y_b, y_e, b, e, one_based = FALSE) {
 
 span_intersections <- function(indices, y_b, y_e, b, e, one_based = FALSE) {
     .Call(`_dart_span_intersections`, indices, y_b, y_e, b, e, one_based)
+}
+
+relative_transpositions <- function(n, T) {
+    .Call(`_dart_relative_transpositions`, n, T)
 }
 
 bentley_ottmann <- function(S) {

@@ -52,17 +52,15 @@ struct DenseNumericMatrix {
 		return(le ? std::make_optional(le->second) : std::nullopt);
 	}
 	
-	// Adds (lambda * col(i)) + col(j) -> col(j)
-	void add_scaled_col(size_t i, size_t j, double lambda){
-		const NumericMatrix::Column& i_col = m(_, i);
-		NumericVector ii = m(_,i);
-		NumericVector jj = m(_,j);
+	void add_cols(size_t i, size_t j, size_t k){
+		if (i != k && j != k){ throw std::invalid_argument("i,j must equal k."); }
+		const size_t s = i == k ? j : i;
+		const NumericMatrix::Column& s_col = m(_, s);
 		for (size_t r = 0; r < m.nrow(); ++r){
-			//double before = double(m(r,j));
-			m(r,j) += lambda*i_col[r];
-			// if (!equals_zero(before)){ Rprintf("[%.2g]*%.2g + %.2g -> %.2g,", i_col[r], lambda, before, m(r,j)); }
+			m(r,k) += s_col[r];
 		}
 	}
+	
 	template < typename Lambda >
 	void column(size_t c, Lambda&& f){
 		if (c >= m.ncol()){ return; }
@@ -77,10 +75,21 @@ struct DenseNumericMatrix {
 		return std::all_of(col_j.begin(), col_j.end(), equals_zero);
 	}
 	
+	void scale_col(size_t i, double lambda){
+		m.column(i) = lambda*m.column(i);
+	}
+	void add_scaled_col(size_t i, size_t j, size_t k, double lambda){
+		if (i != k && j != k){ throw std::invalid_argument("i or j must equal k."); }
+		const size_t s = i == k ? j : i; 
+		m.column(k) = m.column(k) + lambda*m.column(s);
+	}
+	
 	// Cancels lowest entry of column j by setting its value = 0 using column i 
 	void cancel_lowest(size_t j, size_t i){
 		if (column_empty(j)){ return; }
-		add_scaled_col(i,j, -(*low_value(j))/(*low_value(i)));
+		auto lambda = -(*low_value(j))/(*low_value(i));
+		m.column(j) = m.column(j) + lambda*m.column(i);
+		// add_scaled_col(i,j, );
 	}
 	
 	// Finds a column index i + its lowest entry low_i such that i < j and low_i == low_j, if it exists

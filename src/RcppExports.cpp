@@ -7,41 +7,44 @@
 using namespace Rcpp;
 
 // reduce_pspbool
-void reduce_pspbool(SEXP Ds, SEXP Vs);
-RcppExport SEXP _dart_reduce_pspbool(SEXP DsSEXP, SEXP VsSEXP) {
+int reduce_pspbool(SEXP D_ptr, SEXP V_ptr);
+RcppExport SEXP _dart_reduce_pspbool(SEXP D_ptrSEXP, SEXP V_ptrSEXP) {
 BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type Ds(DsSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type Vs(VsSEXP);
-    reduce_pspbool(Ds, Vs);
-    return R_NilValue;
+    Rcpp::traits::input_parameter< SEXP >::type D_ptr(D_ptrSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type V_ptr(V_ptrSEXP);
+    rcpp_result_gen = Rcpp::wrap(reduce_pspbool(D_ptr, V_ptr));
+    return rcpp_result_gen;
 END_RCPP
 }
 // reduce_local_pspbool
-void reduce_local_pspbool(SEXP D1s, SEXP V1s, SEXP D2s, SEXP V2s, bool clearing);
-RcppExport SEXP _dart_reduce_local_pspbool(SEXP D1sSEXP, SEXP V1sSEXP, SEXP D2sSEXP, SEXP V2sSEXP, SEXP clearingSEXP) {
+int reduce_local_pspbool(SEXP D1_ptr, SEXP V1_ptr, SEXP D2_ptr, SEXP V2_ptr, bool clearing);
+RcppExport SEXP _dart_reduce_local_pspbool(SEXP D1_ptrSEXP, SEXP V1_ptrSEXP, SEXP D2_ptrSEXP, SEXP V2_ptrSEXP, SEXP clearingSEXP) {
 BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type D1s(D1sSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type V1s(V1sSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type D2s(D2sSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type V2s(V2sSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type D1_ptr(D1_ptrSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type V1_ptr(V1_ptrSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type D2_ptr(D2_ptrSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type V2_ptr(V2_ptrSEXP);
     Rcpp::traits::input_parameter< bool >::type clearing(clearingSEXP);
-    reduce_local_pspbool(D1s, V1s, D2s, V2s, clearing);
-    return R_NilValue;
+    rcpp_result_gen = Rcpp::wrap(reduce_local_pspbool(D1_ptr, V1_ptr, D2_ptr, V2_ptr, clearing));
+    return rcpp_result_gen;
 END_RCPP
 }
-// simulate_vineyard_cpp
-void simulate_vineyard_cpp(SEXP Rs, SEXP Vs, IntegerVector schedule, Nullable< Function > f);
-RcppExport SEXP _dart_simulate_vineyard_cpp(SEXP RsSEXP, SEXP VsSEXP, SEXP scheduleSEXP, SEXP fSEXP) {
+// simulate_vineyard_pspbool
+int simulate_vineyard_pspbool(SEXP R_ptr, SEXP V_ptr, IntegerVector schedule, Nullable< Function > f);
+RcppExport SEXP _dart_simulate_vineyard_pspbool(SEXP R_ptrSEXP, SEXP V_ptrSEXP, SEXP scheduleSEXP, SEXP fSEXP) {
 BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type Rs(RsSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type Vs(VsSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type R_ptr(R_ptrSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type V_ptr(V_ptrSEXP);
     Rcpp::traits::input_parameter< IntegerVector >::type schedule(scheduleSEXP);
     Rcpp::traits::input_parameter< Nullable< Function > >::type f(fSEXP);
-    simulate_vineyard_cpp(Rs, Vs, schedule, f);
-    return R_NilValue;
+    rcpp_result_gen = Rcpp::wrap(simulate_vineyard_pspbool(R_ptr, V_ptr, schedule, f));
+    return rcpp_result_gen;
 END_RCPP
 }
 // move_schedule_local
@@ -96,6 +99,17 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const double >::type m(mSEXP);
     Rcpp::traits::input_parameter< const double >::type b(bSEXP);
     rcpp_result_gen = Rcpp::wrap(push_map(x, m, b));
+    return rcpp_result_gen;
+END_RCPP
+}
+// boundary_matrix_fi_full
+S4 boundary_matrix_fi_full(SEXP filtration);
+RcppExport SEXP _dart_boundary_matrix_fi_full(SEXP filtrationSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type filtration(filtrationSEXP);
+    rcpp_result_gen = Rcpp::wrap(boundary_matrix_fi_full(filtration));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -403,6 +417,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// relative_transpositions
+Rcpp::IntegerMatrix relative_transpositions(const size_t n, const Rcpp::IntegerMatrix& T);
+RcppExport SEXP _dart_relative_transpositions(SEXP nSEXP, SEXP TSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const size_t >::type n(nSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerMatrix& >::type T(TSEXP);
+    rcpp_result_gen = Rcpp::wrap(relative_transpositions(n, T));
+    return rcpp_result_gen;
+END_RCPP
+}
 // bentley_ottmann
 arma::mat bentley_ottmann(const arma::mat& S);
 RcppExport SEXP _dart_bentley_ottmann(SEXP SSEXP) {
@@ -421,11 +447,12 @@ RcppExport SEXP _rcpp_module_boot_implicit_filtration_module();
 static const R_CallMethodDef CallEntries[] = {
     {"_dart_reduce_pspbool", (DL_FUNC) &_dart_reduce_pspbool, 2},
     {"_dart_reduce_local_pspbool", (DL_FUNC) &_dart_reduce_local_pspbool, 5},
-    {"_dart_simulate_vineyard_cpp", (DL_FUNC) &_dart_simulate_vineyard_cpp, 4},
+    {"_dart_simulate_vineyard_pspbool", (DL_FUNC) &_dart_simulate_vineyard_pspbool, 4},
     {"_dart_move_schedule_local", (DL_FUNC) &_dart_move_schedule_local, 6},
     {"_dart_reduce_arma", (DL_FUNC) &_dart_reduce_arma, 2},
     {"_dart_reduce_local_arma", (DL_FUNC) &_dart_reduce_local_arma, 5},
     {"_dart_push_map", (DL_FUNC) &_dart_push_map, 3},
+    {"_dart_boundary_matrix_fi_full", (DL_FUNC) &_dart_boundary_matrix_fi_full, 1},
     {"_dart_boundary_matrix_fi", (DL_FUNC) &_dart_boundary_matrix_fi, 2},
     {"_dart_boundary_matrix_st", (DL_FUNC) &_dart_boundary_matrix_st, 2},
     {"_dart_all_lcs", (DL_FUNC) &_dart_all_lcs, 2},
@@ -451,6 +478,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_dart_bin_break", (DL_FUNC) &_dart_bin_break, 2},
     {"_dart_SearchInStrip", (DL_FUNC) &_dart_SearchInStrip, 5},
     {"_dart_span_intersections", (DL_FUNC) &_dart_span_intersections, 6},
+    {"_dart_relative_transpositions", (DL_FUNC) &_dart_relative_transpositions, 2},
     {"_dart_bentley_ottmann", (DL_FUNC) &_dart_bentley_ottmann, 1},
     {"_rcpp_module_boot_PspBoolMatrix", (DL_FUNC) &_rcpp_module_boot_PspBoolMatrix, 0},
     {"_rcpp_module_boot_implicit_filtration_module", (DL_FUNC) &_rcpp_module_boot_implicit_filtration_module, 0},

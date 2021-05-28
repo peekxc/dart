@@ -268,6 +268,34 @@ arma::mat span_intersections(const arma::umat indices, const Rcpp::NumericVector
 	return(coords);
 }
 
+// relative_tr <- function(p, transpositions){
+// 	S <- matrix(0L, ncol = 0, nrow = 2)
+// 	for (i in seq(ncol(transpositions))){
+// 		tr_idx <- match(transpositions[,i], p)
+// 		S <- cbind(S, tr_idx)
+// 		p[tr_idx] <- p[rev(tr_idx)]
+// 	}
+// 	return(unname(S))
+// }
+//[[Rcpp::export]]
+Rcpp::IntegerMatrix relative_transpositions(const size_t n, const Rcpp::IntegerMatrix& T){
+	auto p_ids = std::vector< int >(n);
+	auto p_pos = std::vector< int >(n);
+	std::iota(p_ids.begin(), p_ids.end(), 0);
+	std::iota(p_pos.begin(), p_pos.end(), 0);
+	auto P = Rcpp::IntegerMatrix(2, T.ncol());
+	for (size_t i = 0; i < T.ncol(); ++i){
+		size_t ii = T(0,i), jj = T(1,i);
+		size_t pi = p_pos[ii], pj = p_pos[jj];
+		std::swap(p_ids[pi], p_ids[pj]);
+		p_pos[ii] = pj;
+		p_pos[jj] = pi;
+		P(0,i) = pi;
+		P(1,i) = pj;
+	}
+	return(P);
+}
+
 
 /*** R
 # X <- matrix(rnorm(10*5), ncol = 10, nrow = 5)
