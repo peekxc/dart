@@ -12,7 +12,7 @@ boundary_matrix(
 )
 }
 \arguments{
-\item{x}{list of simplices.}
+\item{x}{list of simplices, simplex tree, or a filtration.}
 
 \item{dim}{dimension of boundary matrix desired}
 

@@ -13,11 +13,11 @@ simplex_to_str <- function(x){
 	if (is.null(x) || length(x) == 0){ return(NULL) }
 	to_str <- function(simplex){ sprintf("(%s)",paste0(simplex, collapse=",")) }
 	if (!is.null(dim(x))){
-		return(apply(x, 2, to_str))
+		return(simplex_to_str_rcpp(split(x, slice.index(x,2))))
 	} else if (is.numeric(x) && is.vector(x)){
 		return(sprintf("(%s)",paste0(x, collapse=",")))
 	} else if (is.list(x)){
-		lapply(x, to_str)
+		return(simplex_to_str_rcpp(x))
 	} else { stop("Invalid format given.") }
 }
 

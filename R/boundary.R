@@ -1,20 +1,86 @@
 #' @title Boundary matrix
 #' @description Constructs filtration boundary matrices
-#' @param x list of simplices.
+#' @param x list of simplices, simplex tree, or a filtration.
 #' @param dim dimension of boundary matrix desired
 #' @param labeled whether to add simplex labels to the corresponding matrices.
 #' @param field intended 
 #' @details This function computes and returns the elementary chains associated with a filtered simplicial complex.
 #' The filtration is expected to be given as list of a simplices.  
 #' @export
-boundary_matrix <- function(x, dim="all", labeled=TRUE, field=c("mod2", "integer", "real")){
-	
-	# if (is.list(x)){
-	# 	
-	# } else if ("Rcpp_ImplicitFiltration" %in% class(x)){
-	# 	
-	# }
-	if (!missing(dim) && is.numeric(dim)){
+boundary_matrix <- function(x, dims="all", labeled=c("none", "columns", "both"), field=c("mod2", "integer", "real")){
+	if (is.list(x)){ x <- filtration(x) }
+	show_labels  <- !missing(labeled) || (labeled == TRUE)
+	labeled_true <- show_labels && (labeled == TRUE)
+	if (inherits(x, "Rcpp_SimplexTree")){
+		if (missing(dims) || dims == "all"){
+			D <- dart:::boundary_matrix_st_full(x$as_XPtr())
+			if (show_labels && (labeled_true || labeled %in% c("columns", "both"))){
+				colnames(D) <- simplex_to_str(as.list(simplextree::level_order(x)))	
+				if (labeled == "both" || labeled_true){
+					rownames(D) <- colnames(D)
+				}
+			}
+		} else {
+			D <- lapply(dims, function(k){ 
+				m <- dart:::boundary_matrix_st(x$as_XPtr(), k) 
+				if (show_labels && (labeled_true || labeled %in% c("columns", "both"))){
+					colnames(m) <- simplex_to_str(as.list(simplextree::k_simplices(x, k)))
+					if (labeled == "both" || labeled_true){
+						rownames(D) <- colnames(D)
+					}
+				}
+				return(m)
+			})
+		}
+	} else if (inherits(x, "Filtration")){
+		if (missing(dims) || dims == "all"){
+			p <- Matrix::invPerm(x$shortlex_order)
+			D <- dart:::boundary_matrix_st_full(x$complex$as_XPtr())
+			D <- D[p,p,drop=FALSE]
+			if (show_labels && (labeled_true || labeled %in% c("columns", "both"))){
+				colnames(D) <- simplex_to_str(x$simplices)
+				if (labeled == "both" || labeled_true){
+					rownames(D) <- colnames(D)
+				}
+			}
+		} else {
+			D <- lapply(dims, function(k){ 
+				m <- dart:::boundary_matrix_st(x$complex$as_XPtr(), k) 
+				p <- Matrix::invPerm(order(x$ranks[x$dimensions == k]))
+				q <- Matrix::invPerm(order(x$ranks[x$dimensions == k-1L]))
+				m <- m[q,p,drop=FALSE]
+				if (show_labels && labeled_true || labeled %in% c("columns", "both")){
+					colnames(m) <- simplex_to_str(x$k_simplices(k))
+					if (labeled == "both" || labeled_true){
+						rownames(D) <- colnames(D)
+					}
+				}
+				return(m)
+			})
+		}
+	}
+	out <- structure(list(matrix=D), hom_dim=dims, class="fbm")
+	return(out)
+}
+
+boundary_matrix_backup <- function(){
+		# fi_ptr <- x$.__enclos_env__[["private"]]$.filtration$as_XPtr()
+		# if (missing(dim) || dim == "all"){
+		# 	D <- dart:::boundary_matrix_fi_full(fi_ptr)
+		# 	if (labeled){
+		# 		colnames(D) <- simplex_to_str(x$simplices)	
+		# 		rownames(D) <- colnames(D)
+		# 	}
+		# } else {
+		# 	D <- lapply(dim, function(k){ 
+		# 		m <- dart:::boundary_matrix_fi(fi_ptr, k) 
+		# 		if (labeled){
+		# 			colnames(m) <- simplex_to_str(x$k_simplices(k))	
+		# 		}
+		# 		return(m)
+		# 	})
+		# }
+		if (!missing(dim) && is.numeric(dim)){
 		di <- sapply(x, length)
 		nv <- sum(di == 1L)
 		D <- vector(mode = "list", length = length(dim))
@@ -59,8 +125,6 @@ boundary_matrix <- function(x, dim="all", labeled=TRUE, field=c("mod2", "integer
 		)
 		dim <- sort(unique(di))
 	}
-	out <- structure(list(matrix=D), hom_dim=dim, class="fbm")
-	return(out)
 }
 
 # boundary_matrix.simplex_tree <- function(){

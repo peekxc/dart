@@ -3,6 +3,9 @@ using namespace Rcpp;
 
 #include <set>
 #include <vector>
+#include <memory>
+#include <string>
+#include <stdexcept>
 using std::set; 
 using std::string;
 using std::vector;
@@ -169,6 +172,47 @@ int inversion_count(IntegerVector iv){
 }
 
 // [[Rcpp::export]]
+NumericVector unique_numeric(std::vector< double > x, const double eps){
+	auto it = std::unique(x.begin(), x.end(), [eps](double x1, double x2){
+		return(std::abs(x1 - x2) < eps);
+	}); 
+	x.resize(std::distance(x.begin(), it));
+	return(wrap(x));
+}
+
+typedef int index_type;
+
+// From: https://www.r-bloggers.com/2014/09/compute-longest-increasingdecreasing-subsequence-using-rcpp/
+// [[Rcpp::export]]
+Rcpp::IntegerVector longest_inc_subseq(SEXP X){
+	Rcpp::IntegerVector x(X);
+	std::vector< int > P(x.size(), 0);
+	std::vector< int > M(x.size()+1, 0);
+	index_type L(0), newL;
+	for(index_type i=0; i < x.size(); ++i) {
+		index_type lo(1), hi(L), mid;
+		while( lo <= hi) { mid = (lo + hi) / 2;
+			if (x[M[mid]] < x[i] ) { lo = mid + 1; } else { hi = mid - 1; } 
+		}
+	  newL = lo;
+	  P[i] = M[newL - 1];
+	  if (newL > L) {
+	  	M[newL] = i;
+	  	L = newL;
+	  } else if (x[i] < x[M[newL]]) {
+	  	M[newL] = i;
+	  }
+	}    
+	std::vector< index_type > re(L);
+	index_type k(M[L]);
+	for(index_type i=L-1; i>=0; --i){
+		re[i] = k + 1;
+		k = P[k];
+	}    
+	return(Rcpp::wrap(re));
+}
+
+// [[Rcpp::export]]
 NumericVector perm_dist_mat(IntegerMatrix P, const bool kendall = true, const bool normalize=false){
 	
 	// Prepare variables
@@ -210,8 +254,6 @@ NumericVector perm_dist_mat(IntegerMatrix P, const bool kendall = true, const bo
 	return(dist_p);
 }
 
-
-
 // [[Rcpp::export]]
 size_t fast_choose(const size_t n, const size_t k){
 	return(dart::BinomialCoefficient(n,k));
@@ -228,6 +270,74 @@ size_t spearman_perm(const IntegerVector& x, const IntegerVector& y){
 	for (size_t i = 0; i < x_len; ++i){ sd += std::abs(int(i - matched[x[i]])); }
 	return(sd);
 }
+
+// [[Rcpp::export]]
+IntegerVector rank_combn_rcpp(const IntegerMatrix& C, const size_t n){
+	const size_t k = C.nrow(); 
+	auto out = IntegerVector(C.ncol());
+	dart::lex_rank(C.begin(), C.end(), n, k, out.begin());
+	return(out);
+}
+// [[Rcpp::export]]
+int rank_combn_single_rcpp(const IntegerVector& C, const size_t n){
+	auto rank = dart::lex_rank(std::span(C.begin(), C.end()), n);
+	return(rank);
+}
+// [[Rcpp::export]]
+IntegerMatrix unrank_combn_rcpp(const IntegerVector& R, const size_t n, const size_t k){
+	auto out_v = vector< int >();
+	out_v.reserve(R.size()*k);
+	dart::lex_unrank(R.begin(), R.end(), n, k, std::back_inserter(out_v));
+	auto out = IntegerMatrix(k, R.size(), out_v.begin());
+	return(out);
+}
+// [[Rcpp::export]]
+IntegerVector unrank_combn_single_rcpp(const int64_t rank, const size_t n, const size_t k){
+	auto combn = dart::lex_unrank(rank, n, k);
+	return(IntegerVector(combn.begin(), combn.end()));
+}
+
+// https://stackoverflow.com/questions/2342162/stdstring-formatting-like-sprintf
+template<typename ... Args>
+std::string string_format( const std::string& format, Args ... args ) {
+  int size_s = std::snprintf( nullptr, 0, format.c_str(), args ... ) + 1; // Extra space for '\0'
+  if( size_s <= 0 ){ throw std::runtime_error( "Error during formatting." ); }
+  auto size = static_cast<size_t>( size_s );
+  auto buf = std::make_unique<char[]>( size );
+  std::snprintf( buf.get(), size, format.c_str(), args ... );
+  return std::string( buf.get(), buf.get() + size - 1 ); // We don't want the '\0' inside
+}
+
+template< typename RandomIter > [[nodiscard]]
+inline std::string pretty_simplex(RandomIter b, const RandomIter e){
+	switch(std::distance(b,e)){
+		case 0: return("");
+		case 1: return(string_format("(%d)", *b ));
+		case 2: return(string_format("(%d,%d)", *b, *(b+1) ));
+		case 3: return(string_format("(%d,%d,%d)", *b, *(b+1), *(b+2) ));
+		case 4: return(string_format("(%d,%d,%d,%d)", *b, *(b+1), *(b+2), *(b+3) ));
+		case 5: return(string_format("(%d,%d,%d,%d,%d)", *b, *(b+1), *(b+2), *(b+3), *(b+4) ));
+		default: {
+			std::stringstream ss;
+			ss << "(";
+			for (; b != e; ++b){ ss << *b << ","; }
+			ss.seekp(-1,ss.cur);
+			ss << ")";
+			return(ss.str());
+		}
+	}
+}
+
+// [[Rcpp::export]]
+StringVector simplex_to_str_rcpp(const ListOf< const IntegerVector >& x){
+	std::vector< std::string > out; 
+	out.reserve(x.size());
+	for (const IntegerVector& s: x){
+		out.push_back(pretty_simplex(s.begin(), s.end()));
+	}
+	return(wrap(out));
+}
+
 
 /*** R
 a <- paste0(letters[1:7], collapse = "")

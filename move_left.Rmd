@@ -1,0 +1,25 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+move_left(R=list(R1=rv1$R$as.Matrix(), ))
+
+low_entries <- apply(rv2$R$as.Matrix(), 2, dart:::low_entry)
+names(low_entries) <- 1:ncol(rv2$R$as.Matrix())
+i_col <- which(low_entries == 27)
+
+R2p <- permute_move(R2, i = 27, j = 24, dims = "rows")
+low_entries <- apply(R2p, 2, dart:::low_entry) 
+nz_low_columns <- which(low_entries != 0)
+nz_low_entries <- low_entries[nz_low_columns]
+while(anyDuplicated(nz_low_entries)){
+	dup_entry <- nz_low_entries[anyDuplicated(nz_low_entries)]
+	which(nz_low_entries == dup_entry)
+	
+}
+```
+
+

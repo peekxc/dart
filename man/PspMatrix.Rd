@@ -26,7 +26,7 @@ PspMatrix
   i = NULL,
   j = NULL,
   x = NULL,
-  dims,
+  dims = NULL,
   type = c("bool", "integer", "numeric")
 )}\if{html}{\out{</div>}}
 }

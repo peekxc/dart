@@ -3,6 +3,10 @@
 
 #include "reduction.h"
 
+// [[Rcpp::depends(RcppProgress)]]
+#include <progress.hpp>
+#include <progress_bar.hpp>
+
 // Sparse Matrix class using Armadillo
 template< typename Value >
 struct ReducibleSpMat {
@@ -102,17 +106,19 @@ struct ReducibleSpMat {
 };
 
 // [[Rcpp::export]]
-Rcpp::List reduce_arma(arma::sp_mat& D, arma::sp_mat& v) {
+Rcpp::List reduce_arma(arma::sp_mat& D, arma::sp_mat& v, bool show_progress=true) {
   auto R = ReducibleSpMat< double >(D);
 	auto V = ReducibleSpMat< double >(v);	
 	auto indices = std::vector< size_t >(D.n_cols-1);
 	std::iota(indices.begin(), indices.end(), 1);
-	pHcol(R, V, indices.begin(), indices.end());
+	Progress p(indices.size(), show_progress);
+	const auto P = [&p](){ p.increment(); };
+	pHcol(R, V, indices.begin(), indices.end(), P);
 	return Rcpp::List::create(Rcpp::_["R"]=Rcpp::wrap(R.m), Rcpp::_["V"]=Rcpp::wrap(V.m));
 }
 
 // [[Rcpp::export]]
-Rcpp::List reduce_local_arma(arma::sp_mat& D1, arma::sp_mat& v1, arma::sp_mat& D2, arma::sp_mat& v2, bool clearing) {
+Rcpp::List reduce_local_arma(arma::sp_mat& D1, arma::sp_mat& v1, arma::sp_mat& D2, arma::sp_mat& v2, bool clearing, bool show_progress=true) {
   auto R1 = ReducibleSpMat< double >(D1);
 	auto V1 = ReducibleSpMat< double >(v1);
 	auto R2 = ReducibleSpMat< double >(D2);
@@ -121,7 +127,9 @@ Rcpp::List reduce_local_arma(arma::sp_mat& D1, arma::sp_mat& v1, arma::sp_mat& D
 	auto d2_ind = std::vector< size_t >(D2.n_cols-1);
 	std::iota(d1_ind.begin(), d1_ind.end(), 1);
 	std::iota(d2_ind.begin(), d2_ind.end(), 1);
-	pHcol_local(R1, V1, R2, V2, d1_ind.begin(), d1_ind.end(), d2_ind.begin(), d2_ind.end());
+	Progress p(d1_ind.size() + d2_ind.size(), show_progress);
+	const auto P = [&p](){ p.increment(); };
+	pHcol_local(R1, V1, R2, V2, d1_ind.begin(), d1_ind.end(), d2_ind.begin(), d2_ind.end(), P);
 	auto out = Rcpp::List::create(
 		Rcpp::_["R1"]=Rcpp::wrap(R1.m), Rcpp::_["V1"]=Rcpp::wrap(V1.m),
 		Rcpp::_["R2"]=Rcpp::wrap(R2.m), Rcpp::_["V2"]=Rcpp::wrap(V2.m)

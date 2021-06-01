@@ -229,9 +229,18 @@ struct ImplicitFiltration {
 			if (dims[i] == 0){ return(grades[i]); }
 			auto s = dart::lex_unrank(ranks[i], n, dims[i]+1);
 			return std::reduce(s.begin(), s.end(), 0.0, [this](auto i, auto j){ return std::max(grades.at(i), grades.at(j)); });
-	
+		} else {
+			return(grades[i]);
 		}
 		return(-1.0);
+	}
+	vector< size_t > explicit_simplex(const size_t i) const  {
+		if (i >= m){ throw std::invalid_argument("Index larger than filtration"); }
+		auto s = dart::lex_unrank(ranks[i], n, dims[i]+1);
+		// std::span< size_t >(s.begin(), s.end())
+		auto ss = relabel(std::span{s});
+		// auto sx = relabel(std::span< size_t >(s.begin(), s.end()));
+		return(vector< size_t >(ss.begin(), ss.end()));
 	}
 	
 	// Applies the boundary operator to the simplex at position i in the filtration
@@ -243,20 +252,34 @@ struct ImplicitFiltration {
 		
 		// Get the k-simplex at position i in the filtration
 		vector< dart::I > s = dart::lex_unrank(ranks[i], n, d+1);
-		
+		std::cout << "simplex: " << std::endl;
+		for (auto label: s){
+			std::cout << label << ",";
+		}
+		std::cout << std::endl; 
+					
 		// Range of (k-1)-faces in the filtration (contiguous in indexes order!)
 		const auto ib = indexes.begin()+(d == 1 ? 0 : cum_ns.at(d-2));
 		const auto ie = indexes.begin()+cum_ns.at(d-1);
 		
 		// Enumerate faces, outputing relative indices as needed 
 		for_each_combination(s.begin(), s.begin() + d, s.end(), [this, &ie, &ib, &out, relative](auto b, auto e){
+			
 			auto face = vector< dart::I >(b, e);
+			std::cout << "face: "; 
+			for (auto label: face){
+				std::cout << label << ",";
+			}
+			std::cout << std::endl; 
+			
 			auto face_rank = dart::lex_rank(std::span{face}, n);
+			std::cout << "searching for rank: " << face_rank << std::endl; 
 			auto face_it = std::lower_bound(ib, ie, face_rank, [this](auto j, auto r){
 				return(ranks[j] < r);
 			});
 			// Boundary indices relative to dimension 
 			if (face_it != ie){
+				std::cout << "writing: " << std::distance(ib, face_it) << ";" << std::endl; 
 				*out++ = relative ? std::distance(ib, face_it) : *face_it;
 			}
 			return false;

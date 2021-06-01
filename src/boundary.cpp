@@ -60,6 +60,17 @@ S4 boundary_matrix_fi(SEXP filtration, const size_t k) {
 	XPtr< ImplicitFiltration > fi_ptr(filtration);
 	ImplicitFiltration& fi = *fi_ptr;
 	
+	// Special cases 
+	if (k == 0 || k > (fi.n_simplexes.size() + 1)){
+		vector< size_t > i, j;
+		vector< int > x; 
+		Rcpp::Environment Matrix("package:Matrix"); 
+	  Rcpp::Function constructMatrix = Matrix["sparseMatrix"]; 
+	  auto m_dim = IntegerVector::create(0, k == 0 ? fi.n_simplexes.at(0) : 0);
+		S4 m = constructMatrix(_["i"] = i, _["j"] = j, _["x"] = x, _["index1"] = false, _["dims"] = m_dim);
+		return(m);
+	}
+	
 	// Prepare sparse matrix inputs 
 	const auto nb = fi.n_simplexes.size() <= k ? 0 : fi.n_simplexes.at(k)*(k+1);
 	vector< size_t > i, j;
@@ -67,35 +78,31 @@ S4 boundary_matrix_fi(SEXP filtration, const size_t k) {
 	i.reserve(nb); j.reserve(nb); x.reserve(nb);
 	
 	// Apply boundary operator to every k-simplex
-	if (k > 0){
-		auto x_out = std::back_inserter(x);
-		auto i_out = std::back_inserter(i);
-		auto j_out = std::back_inserter(j);
-		for (size_t ii = 0, jj = 0; ii < fi.m; ++ii){
-			if (fi.dims[ii] == k){
-				fi.boundary(ii, true, i_out);	
-				std::fill_n(j_out, k+1, jj++);
-			}
+	auto x_out = std::back_inserter(x);
+	auto i_out = std::back_inserter(i);
+	auto j_out = std::back_inserter(j);
+	for (size_t ii = 0, jj = 0; ii < fi.m; ++ii){
+		if (fi.dims[ii] == k){
+			fi.boundary(ii, true, i_out);	
+			std::fill_n(j_out, k+1, jj++);
 		}
-		// The boundary operator data
-		for (size_t c = 0; c < (k+1); ++c){ *x_out++ = c % 2 == 0 ? 1 : -1; }
-		repeat_pattern(x, fi.n_simplexes.at(k));
 	}
+	// The boundary operator data
+	for (size_t c = 0; c < (k+1); ++c){ *x_out++ = c % 2 == 0 ? 1 : -1; }
+	repeat_pattern(x, fi.n_simplexes.at(k));
 	
 	// Remap row indices to match filtration order 
-	if (k > 0){
-		// f: (shortlex index) -> (filtration index)
-		auto lex_to_full = inverse_permutation(fi.indexes.begin(), fi.indexes.end());	
-		const auto offset = k == 1 ? 0 : fi.cum_ns.at(k-2);
-		auto index_map = vector< size_t >();
-		index_map.reserve(fi.n_simplexes.at(k-1));
-		for (size_t i = 0; i < fi.m; ++i){
-			if (fi.dims[i] == (k-1)){
-				index_map.push_back(lex_to_full[i] - offset);
-			}
+	// f: (shortlex index) -> (filtration index)
+	auto lex_to_full = inverse_permutation(fi.indexes.begin(), fi.indexes.end());	
+	const auto offset = k == 1 ? 0 : fi.cum_ns.at(k-2);
+	auto index_map = vector< size_t >();
+	index_map.reserve(fi.n_simplexes.at(k-1));
+	for (size_t i = 0; i < fi.m; ++i){
+		if (fi.dims[i] == (k-1)){
+			index_map.push_back(lex_to_full[i] - offset);
 		}
 	}
-	
+
 	// Create the sparse matrix
 	Rcpp::Environment Matrix("package:Matrix"); 
   Rcpp::Function constructMatrix = Matrix["sparseMatrix"];    
@@ -229,33 +236,131 @@ S4 boundary_matrix_fi(SEXP filtration, const size_t k) {
 // }
 
 // [[Rcpp::export]]
+S4 boundary_matrix_st_full(SEXP stree_ptr) {
+	SimplexTree& st = *Rcpp::XPtr<SimplexTree>(stree_ptr); 
+	// 
+	// // Returns the 0-based (contiguous) index of a vertex label ( O(log n) time )
+	// const auto labels = st.get_vertices();
+	// const auto vertex_index = [&labels](idx_t label) -> size_t {
+	// 	return std::distance(labels.begin(), std::lower_bound(labels.begin(), labels.end(), label));
+	// };
+	// // Re-index a labeled simplex into a 0-based index vector
+	// const auto reindex = [&vertex_index](std::span< size_t > s) -> std::span< size_t > {
+	// 	std::transform(s.begin(), s.end(), s.begin(), [&vertex_index](auto l){ return(vertex_index(l)); });
+	// 	return(s);
+	// };
+	
+	// Extract all the simplices in shortlex order
+	const size_t nv = st.n_simplexes[0];
+	auto simplices = st::level_order< true >(&st, st.root.get());
+	vector< vector< size_t > > all_simplices;
+	all_simplices.reserve(st.size());
+	st::traverse(simplices, [&all_simplices](node_ptr cn, idx_t depth, simplex_t x){
+		all_simplices.push_back(x);
+		return true; 
+	});
+	
+	// Prepare containers to store non-zero indices
+	simplices = st::level_order< true >(&st, st.root.get());
+	vector< size_t > i, j;
+	vector< int > x; 
+	
+	// Shortlex comparator
+	const auto shortlex_cmp = [](const simplex_t& s1, const simplex_t& s2){
+		if (s1.size() != s2.size()){ return(s1.size() < s2.size()); }
+		return(std::lexicographical_compare(s1.begin(), s1.end(), s2.begin(), s2.end()));
+	};
+	
+	// Apply the boundary operator to the k-simplices
+	size_t jj = 0; 
+	st::traverse(simplices, [&](node_ptr cn, idx_t depth, simplex_t s){
+		if (s.size() > 1 && depth > 1){
+			size_t c = 0; 
+			const size_t k = s.size() - 1;
+			for_each_combination(s.begin(), s.begin()+k, s.end(), [&](auto b, auto e){
+				auto face = simplex_t(b,e);
+				auto it = std::lower_bound(all_simplices.begin(), all_simplices.end(), face, shortlex_cmp);
+				i.push_back(std::distance(all_simplices.begin(), it));
+				j.push_back(jj);
+				x.push_back(c++ % 2 == 0 ? 1 : -1);
+				return false; 
+			});
+		}
+		++jj;
+		return true; 
+	});
+	
+	// Create the sparse matrix
+	Rcpp::Environment Matrix("package:Matrix"); 
+  Rcpp::Function constructMatrix = Matrix["sparseMatrix"];    
+	auto m_dim = IntegerVector::create(st.size(), st.size());
+	S4 m = constructMatrix(_["i"] = i, _["j"] = j, _["x"] = x, _["index1"] = false, _["dims"] = m_dim);
+	
+	// Return the lexicographically ordered boundary matrix
+	return(m);
+}
+
+// [[Rcpp::export]]
 S4 boundary_matrix_st(SEXP stree, const size_t k) {
 	Rcpp::XPtr<SimplexTree> stree_ptr(stree);
 	SimplexTree& st = *stree_ptr; 
+	
+	// Special case 
+	if (k == 0){
+		vector< size_t > i, j;
+		vector< int > x; 
+		Rcpp::Environment Matrix("package:Matrix"); 
+	  Rcpp::Function constructMatrix = Matrix["sparseMatrix"];    
+		auto m_dim = IntegerVector::create(0, st.n_simplexes.at(0));
+		S4 m = constructMatrix(_["i"] = i, _["j"] = j, _["x"] = x, _["index1"] = false, _["dims"] = m_dim);	
+		return(m);
+	}
+	if (k > (st.n_simplexes.size() + 1)){
+		vector< size_t > i, j;
+		vector< int > x; 
+		Rcpp::Environment Matrix("package:Matrix"); 
+	  Rcpp::Function constructMatrix = Matrix["sparseMatrix"]; 
+	  auto m_dim = IntegerVector::create(0, 0);
+		S4 m = constructMatrix(_["i"] = i, _["j"] = j, _["x"] = x, _["index1"] = false, _["dims"] = m_dim);
+		return(m);
+	}
+
+	// Returns the 0-based (contiguous) index of a vertex label ( O(log n) time )
+	const auto labels = st.get_vertices();
+	const auto vertex_index = [&labels](idx_t label) -> size_t {
+		return std::distance(labels.begin(), std::lower_bound(labels.begin(), labels.end(), label));
+	};
+	// Re-index a labeled simplex into a 0-based index vector
+	const auto reindex = [&vertex_index](std::span< size_t > s) -> std::span< size_t > {
+		std::transform(s.begin(), s.end(), s.begin(), [&vertex_index](auto l){ return(vertex_index(l)); });
+		return(s);
+	};
 	
 	// Map the faces to their combinadics 
 	const size_t nv = st.n_simplexes[0];
 	auto faces = st::k_simplices< true >(&st, st.root.get(), k-1);
 	vector< size_t > face_idx;
 	face_idx.reserve(st.n_simplexes.at(k));
-	st::traverse(faces, [&face_idx, nv](node_ptr cn, idx_t depth, simplex_t x){
-		face_idx.push_back(dart::lex_rank(std::span{x}, nv));
+	st::traverse(faces, [&face_idx, &reindex, nv](node_ptr cn, idx_t depth, simplex_t x){
+		face_idx.push_back(dart::lex_rank(std::span{reindex(x)}, nv));
 		return true; 
 	});
 	
 	// Prepare containers to store non-zero indices
 	auto simplices = st::k_simplices< true >(&st, st.root.get(), k);
 	const size_t nb = st.n_simplexes.at(k)*(k+1); 
-	vector< size_t > i, j, x;
+	vector< size_t > i, j;
+	vector< int > x; 
 	i.reserve(nb); j.reserve(nb); x.reserve(nb);
 	
 	// Apply the boundary operator to the k-simplices
 	size_t jj = 0; 
-	st::traverse(simplices, [&face_idx, &jj, &i, &j, &x, k, nv](node_ptr cn, idx_t depth, simplex_t s){
+	st::traverse(simplices, [&face_idx, &reindex, &jj, &i, &j, &x, k, nv](node_ptr cn, idx_t depth, simplex_t s){
 		size_t c = 0; 
-		for_each_combination(s.begin(), s.begin()+k, s.end(), [&face_idx, &jj, &i, &j, &x, &c, k, nv](auto b, auto e){
+		for_each_combination(s.begin(), s.begin()+k, s.end(), [&face_idx, &reindex, &jj, &i, &j, &x, &c, nv](auto b, auto e){
 			auto sx = simplex_t(b,e);
-			auto face_index = dart::lex_rank(std::span{sx}, nv);
+			auto rsx = reindex(std::span{sx});
+			auto face_index = dart::lex_rank(std::span{rsx}, nv);
 			auto it = std::lower_bound(face_idx.begin(), face_idx.end(), face_index);
 			i.push_back(std::distance(face_idx.begin(), it));
 			j.push_back(jj);

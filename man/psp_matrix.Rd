@@ -8,7 +8,7 @@ psp_matrix(
   i = NULL,
   j = NULL,
   x = NULL,
-  dims,
+  dims = NULL,
   type = c("bool", "integer", "numeric")
 )
 }

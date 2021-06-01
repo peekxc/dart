@@ -166,12 +166,12 @@ namespace dart {
 	inline void lex_rank(InputIt s, const InputIt e, const size_t n, const size_t k, OutputIt out){
 		if (k == 2){
 			for (; s != e; s += k){
-				out++ = lex_rank_2(*s, *(s+1), n);
+				*out++ = lex_rank_2(*s, *(s+1), n);
 			}
 		} else {
 			const I N = BinomialCoefficient(n, k); 
 			for (; s != e; s += k){
-				out++ = lex_rank_k(s, k, n, N);
+				*out++ = lex_rank_k(s, k, n, N);
 			}
 		}
 	}

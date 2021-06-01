@@ -4,28 +4,28 @@
 #' @export PspBoolMatrix
 NULL
 
-reduce_pspbool <- function(D_ptr, V_ptr) {
-    .Call(`_dart_reduce_pspbool`, D_ptr, V_ptr)
+reduce_pspbool <- function(D_ptr, V_ptr, show_progress = TRUE) {
+    .Call(`_dart_reduce_pspbool`, D_ptr, V_ptr, show_progress)
 }
 
-reduce_local_pspbool <- function(D1_ptr, V1_ptr, D2_ptr, V2_ptr, clearing) {
-    .Call(`_dart_reduce_local_pspbool`, D1_ptr, V1_ptr, D2_ptr, V2_ptr, clearing)
+reduce_local_pspbool <- function(D1_ptr, V1_ptr, D2_ptr, V2_ptr, clearing, show_progress = TRUE) {
+    .Call(`_dart_reduce_local_pspbool`, D1_ptr, V1_ptr, D2_ptr, V2_ptr, clearing, show_progress)
 }
 
-simulate_vineyard_pspbool <- function(R_ptr, V_ptr, schedule, f = NULL) {
-    .Call(`_dart_simulate_vineyard_pspbool`, R_ptr, V_ptr, schedule, f)
+simulate_vineyard_pspbool <- function(R_ptr, V_ptr, schedule, f = NULL, show_progress = TRUE) {
+    .Call(`_dart_simulate_vineyard_pspbool`, R_ptr, V_ptr, schedule, f, show_progress)
 }
 
 move_schedule_local <- function(r1, v1, r2, v2, schedule, f = NULL) {
     invisible(.Call(`_dart_move_schedule_local`, r1, v1, r2, v2, schedule, f))
 }
 
-reduce_arma <- function(D, v) {
-    .Call(`_dart_reduce_arma`, D, v)
+reduce_arma <- function(D, v, show_progress = TRUE) {
+    .Call(`_dart_reduce_arma`, D, v, show_progress)
 }
 
-reduce_local_arma <- function(D1, v1, D2, v2, clearing) {
-    .Call(`_dart_reduce_local_arma`, D1, v1, D2, v2, clearing)
+reduce_local_arma <- function(D1, v1, D2, v2, clearing, show_progress = TRUE) {
+    .Call(`_dart_reduce_local_arma`, D1, v1, D2, v2, clearing, show_progress)
 }
 
 push_map <- function(x, m, b) {
@@ -38,6 +38,10 @@ boundary_matrix_fi_full <- function(filtration) {
 
 boundary_matrix_fi <- function(filtration, k) {
     .Call(`_dart_boundary_matrix_fi`, filtration, k)
+}
+
+boundary_matrix_st_full <- function(stree_ptr) {
+    .Call(`_dart_boundary_matrix_st_full`, stree_ptr)
 }
 
 boundary_matrix_st <- function(stree, k) {
@@ -64,6 +68,14 @@ inversion_count <- function(iv) {
     .Call(`_dart_inversion_count`, iv)
 }
 
+unique_numeric <- function(x, eps) {
+    .Call(`_dart_unique_numeric`, x, eps)
+}
+
+longest_inc_subseq <- function(X) {
+    .Call(`_dart_longest_inc_subseq`, X)
+}
+
 perm_dist_mat <- function(P, kendall = TRUE, normalize = FALSE) {
     .Call(`_dart_perm_dist_mat`, P, kendall, normalize)
 }
@@ -76,12 +88,32 @@ spearman_perm <- function(x, y) {
     .Call(`_dart_spearman_perm`, x, y)
 }
 
-reduce_local_dense <- function(D1, v1, D2, v2) {
-    .Call(`_dart_reduce_local_dense`, D1, v1, D2, v2)
+rank_combn_rcpp <- function(C, n) {
+    .Call(`_dart_rank_combn_rcpp`, C, n)
 }
 
-reduce_dense <- function(D, v) {
-    .Call(`_dart_reduce_dense`, D, v)
+rank_combn_single_rcpp <- function(C, n) {
+    .Call(`_dart_rank_combn_single_rcpp`, C, n)
+}
+
+unrank_combn_rcpp <- function(R, n, k) {
+    .Call(`_dart_unrank_combn_rcpp`, R, n, k)
+}
+
+unrank_combn_single_rcpp <- function(rank, n, k) {
+    .Call(`_dart_unrank_combn_single_rcpp`, rank, n, k)
+}
+
+simplex_to_str_rcpp <- function(x) {
+    .Call(`_dart_simplex_to_str_rcpp`, x)
+}
+
+reduce_local_dense <- function(D1, v1, D2, v2, show_progress = TRUE) {
+    .Call(`_dart_reduce_local_dense`, D1, v1, D2, v2, show_progress)
+}
+
+reduce_dense <- function(D, v, show_progress = TRUE) {
+    .Call(`_dart_reduce_dense`, D, v, show_progress)
 }
 
 interval_cost_rcpp <- function(s, O) {
@@ -106,14 +138,6 @@ test_unrank <- function(r, n, k) {
 
 order_simplices <- function(simplices, weights) {
     .Call(`_dart_order_simplices`, simplices, weights)
-}
-
-unique_numeric <- function(x, eps) {
-    .Call(`_dart_unique_numeric`, x, eps)
-}
-
-longest_inc_subseq <- function(X) {
-    .Call(`_dart_longest_inc_subseq`, X)
 }
 
 pairwise_segment_intersections <- function(S, L, one_based = FALSE) {

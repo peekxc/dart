@@ -31,3 +31,9 @@ M[indices] <- seq(5*8)
 subscripts <- sapply(seq(5*8), function(i){ which(M == i, arr.ind = TRUE) })
 phtools:::rank_gridR(subscripts, nr = 8, nc = 5, column_major = FALSE) # truth
 
+
+all(dart::unrank_combn(seq(choose(30,3)), n = 30, k = 3) == combn(30,3))
+
+
+all(unrank_combn(rank_combn(combn(10,2), n = 10), n = 10, k = 2) == combn(10,2))
+rank_combn(unrank_combn(seq(choose(10,2)), n = 10, k = 2), n = 10)

@@ -44,6 +44,26 @@ NumericVector fi_k_grades(ImplicitFiltration* fi, const size_t k) {
 	}
 	return(Rcpp::wrap(G));
 }
+IntegerVector simplex_at(ImplicitFiltration* fi, const size_t i) {
+	ImplicitFiltration& f = *fi; 
+	return(Rcpp::wrap(f.explicit_simplex(i)));
+}
+double grade_at(ImplicitFiltration* fi, const size_t i) {
+	ImplicitFiltration& f = *fi; 
+	return(f.explicit_grade(i));
+}
+
+size_t dimension(ImplicitFiltration* fi){
+	ImplicitFiltration& f = *fi; 
+	return(f.d - 1L);
+}
+
+vector< size_t > boundary(ImplicitFiltration* fi, const size_t i){
+	ImplicitFiltration& f = *fi; 
+	vector< size_t > indices; 
+	f.boundary(i, true, std::back_inserter(indices));
+	return(indices);
+}
 
 RCPP_MODULE(implicit_filtration_module) {
   using namespace Rcpp;
@@ -51,7 +71,9 @@ RCPP_MODULE(implicit_filtration_module) {
   	.factory(IF_constructor)
     .method( "as_XPtr", &as_XPtr)
     .field_readonly("size", &ImplicitFiltration::m)
+    .field_readonly("num_simplices", &ImplicitFiltration::m)
     .field_readonly("num_vertices", &ImplicitFiltration::n)
+    .property("dimension", &dimension, "Returns the dimension.")
     .field_readonly("cum_sizes", &ImplicitFiltration::cum_ns)
     .field_readonly("minimal_grades", &ImplicitFiltration::grades)
     .field_readonly("vertex_labels", &ImplicitFiltration::labels)
@@ -62,6 +84,9 @@ RCPP_MODULE(implicit_filtration_module) {
 	  .property("grading", &fi_grades, "Returns the grading in filtration order as a vector.")
   	.method( "k_simplices", &fi_k_simplices)
   	.method( "k_grades", &fi_k_grades)
+  	.method("simplex_at", &simplex_at)
+  	.method("grade_at", &grade_at)
+  	.method("boundary", &boundary)
     ;
 }
 

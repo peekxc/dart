@@ -5,7 +5,7 @@ output: html_notebook
 
 ```{r}
 # X_50k <- R.matlab::readMat("~/Downloads/n50000Dct.mat")
-x_15_30 <- R.matlab::readMat("~/Downloads/nk15c30Dct.mat")
+x_15_30 <- R.matlab::readMat("~/Downloads/nk15c30Dct.mat")$nk15c30Dct
 # X <- X_50k$n50000Dct
 X <- x_15_30$nk15c30Dct
 
@@ -85,22 +85,31 @@ for (idx in lm_idx){
 plot(X[unlist(strata),1:2])
 
 
+	# density_levels <- seq(min(f), max(f), length.out = n.strata)
+	# strata_sizes <- sapply(seq(n.strata-1L), function(i){
+	# 	lb <- density_levels[i]
+	# 	ub <- density_levels[i+1L]
+	# 	sum(f >= lb & f <= ub)
+	# })
+	# ns <- ceiling((strata_sizes/sum(strata_sizes))*m)+1L
+	# strata <- lapply(seq(length(density_levels)-1L), function(i){
+	# 	lb <- density_levels[i]
+	# 	ub <- density_levels[i+1L]
+	# 	idx <- which(f >= lb & f <= ub)
+	# 	if (length(idx) == 0){ return(NULL) }
+	# 	idx[landmark::landmarks_maxmin(x[idx,,drop=FALSE], num = min(c(length(idx), ns[i])))]
+	# })
+	# return(unlist(strata))
 stratified_sample <- function(x, m, f, n.strata=25L){
-	density_levels <- seq(min(f), max(f), length.out = n.strata)
-	strata_sizes <- sapply(seq(n.strata-1L), function(i){
-		lb <- density_levels[i]
-		ub <- density_levels[i+1L]
-		sum(f >= lb & f <= ub)
-	})
-	ns <- ceiling((strata_sizes/sum(strata_sizes))*m)+1L
-	strata <- lapply(seq(length(density_levels)-1L), function(i){
-		lb <- density_levels[i]
-		ub <- density_levels[i+1L]
-		idx <- which(f >= lb & f <= ub)
+	strata <- hist(x = f, breaks = seq(min(f), max(f), length.out = n.strata+1L), plot = FALSE)
+	ns <- table(sample(x = seq(n.strata), size = m, replace = TRUE, prob = strata$counts/length(f)))
+	strata_idx <- lapply(names(ns), function(s){
+		bounds <- c(lb=strata$breaks[as.integer(s)], ub=strata$breaks[as.integer(s)+1L])
+		idx <- which(f >= bounds[1] & f <= bounds[2])
 		if (length(idx) == 0){ return(NULL) }
-		idx[landmark::landmarks_maxmin(x[idx,,drop=FALSE], num = min(c(length(idx), ns[i])))]
+		idx[landmark::landmarks_maxmin(x[idx,,drop=FALSE], num = ns[s])]
 	})
-	return(unlist(strata))
+	return(unlist(strata_idx))
 }
 
 # saveRDS(X[unlist(strata),], "optical_500.rds")
@@ -116,7 +125,7 @@ X <- R.matlab::readMat("~/Downloads/n50000Dct.mat")$n50000Dct
 # X <- R.matlab::readMat("~/Downloads/nk15c30Dct.mat")$nk15c30Dct
 
 ## Parameters
-n <- 250 
+n <- 500 
 max_diam <- 0.8
 xbin <- 8L
 ybin <- 8L
@@ -544,7 +553,307 @@ for (i in 2:nrow(path)){
 R <- pbgrad::
 ```
 
+tests
 
+```{r all the tests}
+library("dart")
+# X <- R.matlab::readMat("~/Downloads/n50000Dct.mat")$n50000Dct
+X <- R.matlab::readMat("~/Downloads/nk15c30Dct.mat")$nk15c30Dct
+	
+n <- 375 
+max_diam <- 0.7
+
+## Density estimate
+# k <- 300L
+k <- 15L
+Vd <- function(d){ (pi^(d/2))/(gamma(d/2.0 + 1)) }
+knn_density <- local({
+	x_knn <- RANN::nn2(X, k = k)
+	(k/nrow(X))*(1/(Vd(ncol(X))*x_knn$nn.dists[,k]))
+})
+
+## Stratified maxmin sampling of X
+sample_idx <- stratified_sample(X, m = n, f = knn_density)
+x <- X[sample_idx,,drop=FALSE]
+f <- normalize(max(knn_density[sample_idx]) - knn_density[sample_idx])
+
+## Parameters
+bin_sizes <- seq(8, 24, by=4)
+reduction_total <- vector("integer", length = length(bin_sizes))
+for (b in bin_sizes){
+	xbin <- b; ybin <- b
+	
+	## Get line arrangement + dual graph 
+	ro <- bigraded_betti(
+		x = x, f = f, H = 1L, xbin = xbin, ybin = ybin, max_dist = max_diam, 
+		save.path = "~/pc_f.txt"
+	)
+	
+	## Line arrangement + dual graph
+	LA <- dual_line_arrangement(x = ro)
+	singularities <- sapply(LA, sf::st_area) <= .Machine$double.eps
+	LA <- sf::st_geometrycollection(LA[!singularities])
+	dg <- dual_graph(LA)
+	centroids <- do.call(rbind, lapply(LA, sf::st_centroid))
+
+	## Complex + bifiltration values 
+	dx <- parallelDist::parallelDist(x)
+	R <- simplextree::rips(dx, dim = 2, eps = max_diam, filtered = FALSE)
+	FI <- new(dart:::ImplicitFiltration, R$as_XPtr(), 
+						dx[rankr::rank_comb(t(R$edges), n = R$n_simplices[1])])
+	simplices <- FI$simplices 
+	dist_f <- FI$grading
+	dens_f <- sapply(simplices, function(x){ max(f[x]) })
+
+	## Fibers + bigrades
+	fibers <- cbind(m=centroids[,1], b=-centroids[,2]) ## use duality here
+	minimal_bigrades_t <- t(structure(
+		cbind(dens_f, dist_f), 
+		dimnames = list(unlist(simplex_to_str(simplices)), NULL))
+	)
+
+	## Vertex path in dual graph 
+	e0 <- which(sapply(LA, function(el) { 
+		any(apply(el[[1]], 1, function(pt){ 
+			sum(abs(pt - sf::st_bbox(LA)[c(1,4)])) < .Machine$double.eps }))
+		})
+	)[1]
+	G2 <- local({
+		S_dist <- apply(dg, 1, function(e){
+			bi0 <- dart:::push_map(minimal_bigrades_t, m = fibers[e[1],1], b = fibers[e[1],2])
+			bi1 <- dart:::push_map(minimal_bigrades_t, m = fibers[e[2],1], b = fibers[e[2],2])
+		  spearman_dist(order(bi0[,3]), order(bi1[,3]))
+		})
+	
+		## Build the MST 2-approximation
+		G1 <- igraph::graph.empty(n = nrow(centroids), directed = FALSE)
+		for (i in seq(nrow(dg))){
+			G1 <- igraph::add_edges(G1, dg[i,], weight = S_dist[i])
+		}
+		mst_path <- igraph::mst(G1, weights = igraph::E(G1)$weight)
+		el <- igraph::as_edgelist(mst_path)
+		igraph::graph_from_edgelist(rbind(el, el[,2:1]), directed = TRUE)
+	})
+	vertex_path <- as.vector(unlist(igraph::dfs(G2, root = e0, neimode = "out")$order))
+	
+	## Eulerian path from the vertex order
+	path <- cbind(NA, vertex_path[1])
+	visited <- c(vertex_path[1])
+	for (vi in seq(2, length(vertex_path))){
+		nv <- vertex_path[vi]
+		neighbors <- as.vector(igraph::adjacent_vertices(G2, nv)[[1]])
+		visited_neighbors <- neighbors[neighbors %in% visited]
+		if (length(visited_neighbors) == 1){
+			path <- rbind(path, c(visited_neighbors, nv))
+			visited <- c(visited, nv)
+		} else {
+			neighbor_dist <- apply(cbind(nv, visited_neighbors), 1, function(x){
+				K_dist[simplex_to_str(sort(x))]
+			})
+			nearest_neighbor <- visited_neighbors[which.min(neighbor_dist)]
+			path <- rbind(path, c(nearest_neighbor, nv))
+			visited <- c(visited, nv)
+		}
+	}
+	
+	## Naive reduction 
+	ncol_reduction <- vector(mode = "integer", length = nrow(centroids))
+	for (v in vertex_path){
+		bigrades <- dart:::push_map(minimal_bigrades_t, m = fibers[v,1], b = fibers[v,2])
+		FI <- new(dart:::ImplicitFiltration, R$as_XPtr(), bigrades[,3])
+		D <- dart:::boundary_matrix_fi_full(filtration = FI$as_XPtr())
+		D_psp <- dart::psp_matrix(x = D)
+		V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D)))
+		nc <- dart:::reduce_pspbool(D_psp$matrix$as_XPtr(), V_psp$matrix$as_XPtr())
+		
+		# D1 <- dart:::boundary_matrix_fi(filtration = FI$as_XPtr(), k = 1L)
+		# D2 <- dart:::boundary_matrix_fi(filtration = FI$as_XPtr(), k = 2L)
+		# D1_psp <- dart::psp_matrix(x = D1)
+		# D2_psp <- dart::psp_matrix(x = D2)
+		# V1_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D1)))
+		# V2_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D2)))
+		# nc <- dart:::reduce_local_pspbool(
+		# 	D1_ptr = D1_psp$matrix$as_XPtr(), V1_ptr = V1_psp$matrix$as_XPtr(), 
+		# 	D2_ptr = D2_psp$matrix$as_XPtr(), V2_ptr = V2_psp$matrix$as_XPtr(),
+		# 	clearing = TRUE)
+		
+		ncol_reduction[match(v, vertex_path)] <- nc
+	}
+	
+	## Save progress
+	reduction_total[match(b, bin_sizes)] <- sum(ncol_reduction)
+	print(sum(ncol_reduction))
+}
+
+
+
+# # f <- normalize(knn_density[sample_idx])
+# plot(x, pch = 20, col = bin_col(x = f, col_pal = rainbow(100, start = 0, end = 4/6)))
+# # sample_idx <- sample(1:nrow(X), size = 500)
+# 
+# ## Get line arrangement + dual graph 
+# ro <- bigraded_betti(x = x, f = f, H = 1L, xbin = xbin, ybin = ybin, max_dist = max_diam, 
+# 										 save.path = "~/pc_f.txt")
+# 
+# 
+# LA <- dual_line_arrangement(x = ro)
+# singularities <- sapply(LA, sf::st_area) <= .Machine$double.eps
+# LA <- sf::st_geometrycollection(LA[!singularities])
+```
+
+
+```{r vineyards tests}
+library(simplextree)
+library(dart)
+library(Matrix)
+
+## Parameters
+set.seed(1234)
+bin_sizes <- seq(8, 24, by=4)
+vineyards_total <- vector("integer", length = length(bin_sizes))
+n <- 375 
+max_diam <- 0.70
+
+sample_idx <- stratified_sample(X, m = n, f = knn_density)
+x <- X[sample_idx,,drop=FALSE]
+f <- normalize(max(knn_density[sample_idx]) - knn_density[sample_idx])
+
+
+for (b in bin_sizes){
+	xbin <- b; ybin <- b
+	
+	## Get line arrangement + dual graph 
+	ro <- bigraded_betti(
+		x = x, f = f, H = 1L, xbin = xbin, ybin = ybin, max_dist = max_diam, 
+		save.path = "~/pc_f.txt"
+	)
+	
+	## Line arrangement + dual graph
+	LA <- dual_line_arrangement(x = ro)
+	singularities <- sapply(LA, sf::st_area) <= .Machine$double.eps
+	LA <- sf::st_geometrycollection(LA[!singularities])
+	dg <- dual_graph(LA)
+	centroids <- do.call(rbind, lapply(LA, sf::st_centroid))
+
+	## Complex + bifiltration values 
+	dx <- parallelDist::parallelDist(x)
+	R <- simplextree::rips(dx, dim = 2, eps = max_diam, filtered = FALSE)
+	FI <- new(dart:::ImplicitFiltration, R$as_XPtr(), 
+						dx[rankr::rank_comb(t(R$edges), n = R$n_simplices[1])])
+	simplices <- FI$simplices 
+	dist_f <- FI$grading
+	dens_f <- sapply(simplices, function(x){ max(f[x]) })
+
+	## Fibers + bigrades
+	fibers <- cbind(m=centroids[,1], b=-centroids[,2]) ## use duality here
+	minimal_bigrades_t <- t(structure(
+		cbind(dens_f, dist_f), 
+		dimnames = list(unlist(simplex_to_str(simplices)), NULL))
+	)
+
+	## Vertex path in dual graph 
+	e0 <- which(sapply(LA, function(el) { 
+		any(apply(el[[1]], 1, function(pt){ 
+			sum(abs(pt - sf::st_bbox(LA)[c(1,4)])) < .Machine$double.eps }))
+		})
+	)[1]
+	G2 <- local({
+		S_dist <- apply(dg, 1, function(e){
+			bi0 <- dart:::push_map(minimal_bigrades_t, m = fibers[e[1],1], b = fibers[e[1],2])
+			bi1 <- dart:::push_map(minimal_bigrades_t, m = fibers[e[2],1], b = fibers[e[2],2])
+		  spearman_dist(order(bi0[,3]), order(bi1[,3]))
+		})
+	
+		## Build the MST 2-approximation
+		G1 <- igraph::graph.empty(n = nrow(centroids), directed = FALSE)
+		for (i in seq(nrow(dg))){
+			G1 <- igraph::add_edges(G1, dg[i,], weight = S_dist[i])
+		}
+		mst_path <- igraph::mst(G1, weights = igraph::E(G1)$weight)
+		el <- igraph::as_edgelist(mst_path)
+		igraph::graph_from_edgelist(rbind(el, el[,2:1]), directed = TRUE)
+	})
+	vertex_path <- as.vector(unlist(igraph::dfs(G2, root = e0, neimode = "out")$order))
+	
+	## Eulerian path from the vertex order
+	path <- cbind(NA, vertex_path[1])
+	visited <- c(vertex_path[1])
+	for (vi in seq(2, length(vertex_path))){
+		nv <- vertex_path[vi]
+		neighbors <- as.vector(igraph::adjacent_vertices(G2, nv)[[1]])
+		visited_neighbors <- neighbors[neighbors %in% visited]
+		if (length(visited_neighbors) == 1){
+			path <- rbind(path, c(visited_neighbors, nv))
+			visited <- c(visited, nv)
+		} else {
+			neighbor_dist <- apply(cbind(nv, visited_neighbors), 1, function(x){
+				K_dist[simplex_to_str(sort(x))]
+			})
+			nearest_neighbor <- visited_neighbors[which.min(neighbor_dist)]
+			path <- rbind(path, c(nearest_neighbor, nv))
+			visited <- c(visited, nv)
+		}
+	}
+
+	## Deduce form the path which decompositions to save in memory
+	needs_saved <- !sapply(2:nrow(path), function(i){ path[i,1] == path[i-1,2] })
+	needs_saved <- path[c(FALSE, needs_saved),1]
+	saved <- list()
+	bv <- as.character(e0) ## base vertex
+	P <- dart:::push_map(minimal_bigrades_t, m = fibers[e0,1], b = fibers[e0,2])
+	p <- order(P[,3])
+
+	print("vertex path: ")
+	print(vertex_path)
+	
+	FI <- new(dart:::ImplicitFiltration, R$as_XPtr(), p)
+	D <- dart:::boundary_matrix_fi_full(filtration = FI$as_XPtr())
+	D_psp <- dart::psp_matrix(x = D)
+	V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D)))
+	dart:::reduce_pspbool(D_psp$matrix$as_XPtr(), V_psp$matrix$as_XPtr(), show_progress = TRUE)
+	
+	## Do the vineyards updates
+	vineyard_nc <- 0L
+	for (i in 2:nrow(path)){
+		v <- path[i,2]
+		Q <- dart:::push_map(minimal_bigrades_t, m = fibers[v,1], b = fibers[v,2])
+		q <- order(Q[,3])
+		schedule <- local({
+			S <- vineyards_schedule(simplices[p], simplices[q])
+			pmin(S$schedule[1,], S$schedule[2,])
+		})
+
+		vineyard_nc <- vineyard_nc + dart:::simulate_vineyard_pspbool(
+			R_ptr = D_psp$matrix$as_XPtr(), V_ptr = V_psp$matrix$as_XPtr(), 
+			schedule = schedule - 1L)
+		print(i)
+		if (v %in% needs_saved){
+			print(sprintf("Saving: %d", v))
+			saved[[as.character(v)]] <- fibers[v,]
+		}
+		if (i != nrow(path)){
+			if (path[i,2] != path[i+1,1]){
+				print("changing base vertex")
+				bv <- as.character(path[i+1,1]) ## change base vertex
+				c_fiber <- saved[[as.character(path[i+1,1])]]
+				P <- dart:::push_map(minimal_bigrades_t, m = c_fiber[1], b = c_fiber[2])
+				p <- order(P[,3])
+				FI <- new(dart:::ImplicitFiltration, R$as_XPtr(), P[,3])
+				D <- dart:::boundary_matrix_fi_full(filtration = FI$as_XPtr())
+				D_psp <- dart::psp_matrix(x = D)
+				V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D)))
+				dart:::reduce_pspbool(D_psp$matrix$as_XPtr(), V_psp$matrix$as_XPtr(), show_progress = TRUE)
+			} else {
+				p <- q
+			}
+		}
+	}
+	
+	## Save progress
+	vineyards_total[match(b, bin_sizes)] <- sum(vineyard_nc)
+	print(vineyard_nc)
+}
+```
 
 ```{r}
 lm_idx <- landmark::landmarks_maxmin(X, num = 150, seed_index = which.min(d_left))

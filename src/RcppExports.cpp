@@ -7,20 +7,21 @@
 using namespace Rcpp;
 
 // reduce_pspbool
-int reduce_pspbool(SEXP D_ptr, SEXP V_ptr);
-RcppExport SEXP _dart_reduce_pspbool(SEXP D_ptrSEXP, SEXP V_ptrSEXP) {
+int reduce_pspbool(SEXP D_ptr, SEXP V_ptr, bool show_progress);
+RcppExport SEXP _dart_reduce_pspbool(SEXP D_ptrSEXP, SEXP V_ptrSEXP, SEXP show_progressSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type D_ptr(D_ptrSEXP);
     Rcpp::traits::input_parameter< SEXP >::type V_ptr(V_ptrSEXP);
-    rcpp_result_gen = Rcpp::wrap(reduce_pspbool(D_ptr, V_ptr));
+    Rcpp::traits::input_parameter< bool >::type show_progress(show_progressSEXP);
+    rcpp_result_gen = Rcpp::wrap(reduce_pspbool(D_ptr, V_ptr, show_progress));
     return rcpp_result_gen;
 END_RCPP
 }
 // reduce_local_pspbool
-int reduce_local_pspbool(SEXP D1_ptr, SEXP V1_ptr, SEXP D2_ptr, SEXP V2_ptr, bool clearing);
-RcppExport SEXP _dart_reduce_local_pspbool(SEXP D1_ptrSEXP, SEXP V1_ptrSEXP, SEXP D2_ptrSEXP, SEXP V2_ptrSEXP, SEXP clearingSEXP) {
+int reduce_local_pspbool(SEXP D1_ptr, SEXP V1_ptr, SEXP D2_ptr, SEXP V2_ptr, bool clearing, bool show_progress);
+RcppExport SEXP _dart_reduce_local_pspbool(SEXP D1_ptrSEXP, SEXP V1_ptrSEXP, SEXP D2_ptrSEXP, SEXP V2_ptrSEXP, SEXP clearingSEXP, SEXP show_progressSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -29,13 +30,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type D2_ptr(D2_ptrSEXP);
     Rcpp::traits::input_parameter< SEXP >::type V2_ptr(V2_ptrSEXP);
     Rcpp::traits::input_parameter< bool >::type clearing(clearingSEXP);
-    rcpp_result_gen = Rcpp::wrap(reduce_local_pspbool(D1_ptr, V1_ptr, D2_ptr, V2_ptr, clearing));
+    Rcpp::traits::input_parameter< bool >::type show_progress(show_progressSEXP);
+    rcpp_result_gen = Rcpp::wrap(reduce_local_pspbool(D1_ptr, V1_ptr, D2_ptr, V2_ptr, clearing, show_progress));
     return rcpp_result_gen;
 END_RCPP
 }
 // simulate_vineyard_pspbool
-int simulate_vineyard_pspbool(SEXP R_ptr, SEXP V_ptr, IntegerVector schedule, Nullable< Function > f);
-RcppExport SEXP _dart_simulate_vineyard_pspbool(SEXP R_ptrSEXP, SEXP V_ptrSEXP, SEXP scheduleSEXP, SEXP fSEXP) {
+int simulate_vineyard_pspbool(SEXP R_ptr, SEXP V_ptr, IntegerVector schedule, Nullable< Function > f, bool show_progress);
+RcppExport SEXP _dart_simulate_vineyard_pspbool(SEXP R_ptrSEXP, SEXP V_ptrSEXP, SEXP scheduleSEXP, SEXP fSEXP, SEXP show_progressSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -43,7 +45,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type V_ptr(V_ptrSEXP);
     Rcpp::traits::input_parameter< IntegerVector >::type schedule(scheduleSEXP);
     Rcpp::traits::input_parameter< Nullable< Function > >::type f(fSEXP);
-    rcpp_result_gen = Rcpp::wrap(simulate_vineyard_pspbool(R_ptr, V_ptr, schedule, f));
+    Rcpp::traits::input_parameter< bool >::type show_progress(show_progressSEXP);
+    rcpp_result_gen = Rcpp::wrap(simulate_vineyard_pspbool(R_ptr, V_ptr, schedule, f, show_progress));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -63,20 +66,21 @@ BEGIN_RCPP
 END_RCPP
 }
 // reduce_arma
-Rcpp::List reduce_arma(arma::sp_mat& D, arma::sp_mat& v);
-RcppExport SEXP _dart_reduce_arma(SEXP DSEXP, SEXP vSEXP) {
+Rcpp::List reduce_arma(arma::sp_mat& D, arma::sp_mat& v, bool show_progress);
+RcppExport SEXP _dart_reduce_arma(SEXP DSEXP, SEXP vSEXP, SEXP show_progressSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::sp_mat& >::type D(DSEXP);
     Rcpp::traits::input_parameter< arma::sp_mat& >::type v(vSEXP);
-    rcpp_result_gen = Rcpp::wrap(reduce_arma(D, v));
+    Rcpp::traits::input_parameter< bool >::type show_progress(show_progressSEXP);
+    rcpp_result_gen = Rcpp::wrap(reduce_arma(D, v, show_progress));
     return rcpp_result_gen;
 END_RCPP
 }
 // reduce_local_arma
-Rcpp::List reduce_local_arma(arma::sp_mat& D1, arma::sp_mat& v1, arma::sp_mat& D2, arma::sp_mat& v2, bool clearing);
-RcppExport SEXP _dart_reduce_local_arma(SEXP D1SEXP, SEXP v1SEXP, SEXP D2SEXP, SEXP v2SEXP, SEXP clearingSEXP) {
+Rcpp::List reduce_local_arma(arma::sp_mat& D1, arma::sp_mat& v1, arma::sp_mat& D2, arma::sp_mat& v2, bool clearing, bool show_progress);
+RcppExport SEXP _dart_reduce_local_arma(SEXP D1SEXP, SEXP v1SEXP, SEXP D2SEXP, SEXP v2SEXP, SEXP clearingSEXP, SEXP show_progressSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -85,7 +89,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< arma::sp_mat& >::type D2(D2SEXP);
     Rcpp::traits::input_parameter< arma::sp_mat& >::type v2(v2SEXP);
     Rcpp::traits::input_parameter< bool >::type clearing(clearingSEXP);
-    rcpp_result_gen = Rcpp::wrap(reduce_local_arma(D1, v1, D2, v2, clearing));
+    Rcpp::traits::input_parameter< bool >::type show_progress(show_progressSEXP);
+    rcpp_result_gen = Rcpp::wrap(reduce_local_arma(D1, v1, D2, v2, clearing, show_progress));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -122,6 +127,17 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type filtration(filtrationSEXP);
     Rcpp::traits::input_parameter< const size_t >::type k(kSEXP);
     rcpp_result_gen = Rcpp::wrap(boundary_matrix_fi(filtration, k));
+    return rcpp_result_gen;
+END_RCPP
+}
+// boundary_matrix_st_full
+S4 boundary_matrix_st_full(SEXP stree_ptr);
+RcppExport SEXP _dart_boundary_matrix_st_full(SEXP stree_ptrSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type stree_ptr(stree_ptrSEXP);
+    rcpp_result_gen = Rcpp::wrap(boundary_matrix_st_full(stree_ptr));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -193,6 +209,29 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// unique_numeric
+NumericVector unique_numeric(std::vector< double > x, const double eps);
+RcppExport SEXP _dart_unique_numeric(SEXP xSEXP, SEXP epsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::vector< double > >::type x(xSEXP);
+    Rcpp::traits::input_parameter< const double >::type eps(epsSEXP);
+    rcpp_result_gen = Rcpp::wrap(unique_numeric(x, eps));
+    return rcpp_result_gen;
+END_RCPP
+}
+// longest_inc_subseq
+Rcpp::IntegerVector longest_inc_subseq(SEXP X);
+RcppExport SEXP _dart_longest_inc_subseq(SEXP XSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type X(XSEXP);
+    rcpp_result_gen = Rcpp::wrap(longest_inc_subseq(X));
+    return rcpp_result_gen;
+END_RCPP
+}
 // perm_dist_mat
 NumericVector perm_dist_mat(IntegerMatrix P, const bool kendall, const bool normalize);
 RcppExport SEXP _dart_perm_dist_mat(SEXP PSEXP, SEXP kendallSEXP, SEXP normalizeSEXP) {
@@ -230,9 +269,70 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rank_combn_rcpp
+IntegerVector rank_combn_rcpp(const IntegerMatrix& C, const size_t n);
+RcppExport SEXP _dart_rank_combn_rcpp(SEXP CSEXP, SEXP nSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type C(CSEXP);
+    Rcpp::traits::input_parameter< const size_t >::type n(nSEXP);
+    rcpp_result_gen = Rcpp::wrap(rank_combn_rcpp(C, n));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rank_combn_single_rcpp
+int rank_combn_single_rcpp(const IntegerVector& C, const size_t n);
+RcppExport SEXP _dart_rank_combn_single_rcpp(SEXP CSEXP, SEXP nSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerVector& >::type C(CSEXP);
+    Rcpp::traits::input_parameter< const size_t >::type n(nSEXP);
+    rcpp_result_gen = Rcpp::wrap(rank_combn_single_rcpp(C, n));
+    return rcpp_result_gen;
+END_RCPP
+}
+// unrank_combn_rcpp
+IntegerMatrix unrank_combn_rcpp(const IntegerVector& R, const size_t n, const size_t k);
+RcppExport SEXP _dart_unrank_combn_rcpp(SEXP RSEXP, SEXP nSEXP, SEXP kSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerVector& >::type R(RSEXP);
+    Rcpp::traits::input_parameter< const size_t >::type n(nSEXP);
+    Rcpp::traits::input_parameter< const size_t >::type k(kSEXP);
+    rcpp_result_gen = Rcpp::wrap(unrank_combn_rcpp(R, n, k));
+    return rcpp_result_gen;
+END_RCPP
+}
+// unrank_combn_single_rcpp
+IntegerVector unrank_combn_single_rcpp(const int64_t rank, const size_t n, const size_t k);
+RcppExport SEXP _dart_unrank_combn_single_rcpp(SEXP rankSEXP, SEXP nSEXP, SEXP kSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const int64_t >::type rank(rankSEXP);
+    Rcpp::traits::input_parameter< const size_t >::type n(nSEXP);
+    Rcpp::traits::input_parameter< const size_t >::type k(kSEXP);
+    rcpp_result_gen = Rcpp::wrap(unrank_combn_single_rcpp(rank, n, k));
+    return rcpp_result_gen;
+END_RCPP
+}
+// simplex_to_str_rcpp
+StringVector simplex_to_str_rcpp(const ListOf< const IntegerVector >& x);
+RcppExport SEXP _dart_simplex_to_str_rcpp(SEXP xSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const ListOf< const IntegerVector >& >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(simplex_to_str_rcpp(x));
+    return rcpp_result_gen;
+END_RCPP
+}
 // reduce_local_dense
-List reduce_local_dense(const NumericMatrix& D1, const NumericMatrix& v1, const NumericMatrix& D2, const NumericMatrix& v2);
-RcppExport SEXP _dart_reduce_local_dense(SEXP D1SEXP, SEXP v1SEXP, SEXP D2SEXP, SEXP v2SEXP) {
+List reduce_local_dense(const NumericMatrix& D1, const NumericMatrix& v1, const NumericMatrix& D2, const NumericMatrix& v2, bool show_progress);
+RcppExport SEXP _dart_reduce_local_dense(SEXP D1SEXP, SEXP v1SEXP, SEXP D2SEXP, SEXP v2SEXP, SEXP show_progressSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -240,19 +340,21 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const NumericMatrix& >::type v1(v1SEXP);
     Rcpp::traits::input_parameter< const NumericMatrix& >::type D2(D2SEXP);
     Rcpp::traits::input_parameter< const NumericMatrix& >::type v2(v2SEXP);
-    rcpp_result_gen = Rcpp::wrap(reduce_local_dense(D1, v1, D2, v2));
+    Rcpp::traits::input_parameter< bool >::type show_progress(show_progressSEXP);
+    rcpp_result_gen = Rcpp::wrap(reduce_local_dense(D1, v1, D2, v2, show_progress));
     return rcpp_result_gen;
 END_RCPP
 }
 // reduce_dense
-List reduce_dense(const NumericMatrix& D, const NumericMatrix& v);
-RcppExport SEXP _dart_reduce_dense(SEXP DSEXP, SEXP vSEXP) {
+List reduce_dense(const NumericMatrix& D, const NumericMatrix& v, bool show_progress);
+RcppExport SEXP _dart_reduce_dense(SEXP DSEXP, SEXP vSEXP, SEXP show_progressSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const NumericMatrix& >::type D(DSEXP);
     Rcpp::traits::input_parameter< const NumericMatrix& >::type v(vSEXP);
-    rcpp_result_gen = Rcpp::wrap(reduce_dense(D, v));
+    Rcpp::traits::input_parameter< bool >::type show_progress(show_progressSEXP);
+    rcpp_result_gen = Rcpp::wrap(reduce_dense(D, v, show_progress));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -323,29 +425,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< List >::type simplices(simplicesSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type weights(weightsSEXP);
     rcpp_result_gen = Rcpp::wrap(order_simplices(simplices, weights));
-    return rcpp_result_gen;
-END_RCPP
-}
-// unique_numeric
-NumericVector unique_numeric(std::vector< double > x, const double eps);
-RcppExport SEXP _dart_unique_numeric(SEXP xSEXP, SEXP epsSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< std::vector< double > >::type x(xSEXP);
-    Rcpp::traits::input_parameter< const double >::type eps(epsSEXP);
-    rcpp_result_gen = Rcpp::wrap(unique_numeric(x, eps));
-    return rcpp_result_gen;
-END_RCPP
-}
-// longest_inc_subseq
-Rcpp::IntegerVector longest_inc_subseq(SEXP X);
-RcppExport SEXP _dart_longest_inc_subseq(SEXP XSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type X(XSEXP);
-    rcpp_result_gen = Rcpp::wrap(longest_inc_subseq(X));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -445,34 +524,40 @@ RcppExport SEXP _rcpp_module_boot_PspBoolMatrix();
 RcppExport SEXP _rcpp_module_boot_implicit_filtration_module();
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_dart_reduce_pspbool", (DL_FUNC) &_dart_reduce_pspbool, 2},
-    {"_dart_reduce_local_pspbool", (DL_FUNC) &_dart_reduce_local_pspbool, 5},
-    {"_dart_simulate_vineyard_pspbool", (DL_FUNC) &_dart_simulate_vineyard_pspbool, 4},
+    {"_dart_reduce_pspbool", (DL_FUNC) &_dart_reduce_pspbool, 3},
+    {"_dart_reduce_local_pspbool", (DL_FUNC) &_dart_reduce_local_pspbool, 6},
+    {"_dart_simulate_vineyard_pspbool", (DL_FUNC) &_dart_simulate_vineyard_pspbool, 5},
     {"_dart_move_schedule_local", (DL_FUNC) &_dart_move_schedule_local, 6},
-    {"_dart_reduce_arma", (DL_FUNC) &_dart_reduce_arma, 2},
-    {"_dart_reduce_local_arma", (DL_FUNC) &_dart_reduce_local_arma, 5},
+    {"_dart_reduce_arma", (DL_FUNC) &_dart_reduce_arma, 3},
+    {"_dart_reduce_local_arma", (DL_FUNC) &_dart_reduce_local_arma, 6},
     {"_dart_push_map", (DL_FUNC) &_dart_push_map, 3},
     {"_dart_boundary_matrix_fi_full", (DL_FUNC) &_dart_boundary_matrix_fi_full, 1},
     {"_dart_boundary_matrix_fi", (DL_FUNC) &_dart_boundary_matrix_fi, 2},
+    {"_dart_boundary_matrix_st_full", (DL_FUNC) &_dart_boundary_matrix_st_full, 1},
     {"_dart_boundary_matrix_st", (DL_FUNC) &_dart_boundary_matrix_st, 2},
     {"_dart_all_lcs", (DL_FUNC) &_dart_all_lcs, 2},
     {"_dart_LIS", (DL_FUNC) &_dart_LIS, 1},
     {"_dart_countNumLIS", (DL_FUNC) &_dart_countNumLIS, 1},
     {"_dart_inversions", (DL_FUNC) &_dart_inversions, 1},
     {"_dart_inversion_count", (DL_FUNC) &_dart_inversion_count, 1},
+    {"_dart_unique_numeric", (DL_FUNC) &_dart_unique_numeric, 2},
+    {"_dart_longest_inc_subseq", (DL_FUNC) &_dart_longest_inc_subseq, 1},
     {"_dart_perm_dist_mat", (DL_FUNC) &_dart_perm_dist_mat, 3},
     {"_dart_fast_choose", (DL_FUNC) &_dart_fast_choose, 2},
     {"_dart_spearman_perm", (DL_FUNC) &_dart_spearman_perm, 2},
-    {"_dart_reduce_local_dense", (DL_FUNC) &_dart_reduce_local_dense, 4},
-    {"_dart_reduce_dense", (DL_FUNC) &_dart_reduce_dense, 2},
+    {"_dart_rank_combn_rcpp", (DL_FUNC) &_dart_rank_combn_rcpp, 2},
+    {"_dart_rank_combn_single_rcpp", (DL_FUNC) &_dart_rank_combn_single_rcpp, 2},
+    {"_dart_unrank_combn_rcpp", (DL_FUNC) &_dart_unrank_combn_rcpp, 3},
+    {"_dart_unrank_combn_single_rcpp", (DL_FUNC) &_dart_unrank_combn_single_rcpp, 3},
+    {"_dart_simplex_to_str_rcpp", (DL_FUNC) &_dart_simplex_to_str_rcpp, 1},
+    {"_dart_reduce_local_dense", (DL_FUNC) &_dart_reduce_local_dense, 5},
+    {"_dart_reduce_dense", (DL_FUNC) &_dart_reduce_dense, 3},
     {"_dart_interval_cost_rcpp", (DL_FUNC) &_dart_interval_cost_rcpp, 2},
     {"_dart_pairwise_cost", (DL_FUNC) &_dart_pairwise_cost, 1},
     {"_dart_inverse_permutation", (DL_FUNC) &_dart_inverse_permutation, 1},
     {"_dart_inverse_permutation2", (DL_FUNC) &_dart_inverse_permutation2, 1},
     {"_dart_test_unrank", (DL_FUNC) &_dart_test_unrank, 3},
     {"_dart_order_simplices", (DL_FUNC) &_dart_order_simplices, 2},
-    {"_dart_unique_numeric", (DL_FUNC) &_dart_unique_numeric, 2},
-    {"_dart_longest_inc_subseq", (DL_FUNC) &_dart_longest_inc_subseq, 1},
     {"_dart_pairwise_segment_intersections", (DL_FUNC) &_dart_pairwise_segment_intersections, 3},
     {"_dart_all_segment_intersections", (DL_FUNC) &_dart_all_segment_intersections, 2},
     {"_dart_bin_break", (DL_FUNC) &_dart_bin_break, 2},

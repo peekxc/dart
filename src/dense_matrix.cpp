@@ -3,6 +3,10 @@ using namespace Rcpp;
 
 #include "reduction.h"
 
+// [[Rcpp::depends(RcppProgress)]]
+#include <progress.hpp>
+#include <progress_bar.hpp>
+
 // Dense Matrix class 
 struct DenseNumericMatrix {
 	using value_type = double;
@@ -107,7 +111,7 @@ struct DenseNumericMatrix {
 
 
 // [[Rcpp::export]]
-List reduce_local_dense(const NumericMatrix& D1, const NumericMatrix& v1, const NumericMatrix& D2, const NumericMatrix& v2) {
+List reduce_local_dense(const NumericMatrix& D1, const NumericMatrix& v1, const NumericMatrix& D2, const NumericMatrix& v2, bool show_progress=true) {
 	NumericMatrix d1c = clone(D1);
 	NumericMatrix v1c = clone(v1);
 	NumericMatrix d2c = clone(D2);
@@ -120,19 +124,23 @@ List reduce_local_dense(const NumericMatrix& D1, const NumericMatrix& v1, const 
 	auto d2_ind = std::vector< size_t >(D2.ncol()-1);
 	std::iota(d1_ind.begin(), d1_ind.end(), 1);
 	std::iota(d2_ind.begin(), d2_ind.end(), 1);
-	pHcol_local(R1, V2, R2, V2, d1_ind.begin(), d1_ind.end(), d2_ind.begin(), d2_ind.end());
+	Progress p(d1_ind.size() + d2_ind.size(), show_progress);
+	const auto P = [&p](){ p.increment(); };
+	pHcol_local(R1, V2, R2, V2, d1_ind.begin(), d1_ind.end(), d2_ind.begin(), d2_ind.end(), P);
 	return List::create(_["R1"]=R1.m, _["V1"]=V1.m, _["R2"]=R2.m, _["V2"]=V2.m);
 }
 
 // [[Rcpp::export]]
-List reduce_dense(const NumericMatrix& D, const NumericMatrix& v) {
+List reduce_dense(const NumericMatrix& D, const NumericMatrix& v, bool show_progress=true) {
 	NumericMatrix dd = clone(D);
 	NumericMatrix vv = clone(v);
   auto R = DenseNumericMatrix(dd);
 	auto V = DenseNumericMatrix(vv);	
 	auto indices = std::vector< size_t >(D.ncol()-1);
 	std::iota(indices.begin(), indices.end(), 1);
-	pHcol(R, V, indices.begin(), indices.end());
+	Progress p(indices.size(), show_progress);
+	const auto P = [&p](){ p.increment(); };
+	pHcol(R, V, indices.begin(), indices.end(), P);
 	return List::create(_["R"]=R.m, _["V"]=V.m);
 }
 

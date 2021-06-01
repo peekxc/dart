@@ -160,8 +160,10 @@ public:
 		static_assert(std::is_same_v<typename std::iterator_traits< Iter >::value_type, entry_t >, "Incorrect value_type for iterator");
 		if (c >= n_cols()){ throw std::invalid_argument("Invalid column index"); }
 		
-		// Re-map the current indices to the original indices to maintain consistency 
+		// Re-map the current indices to the original indices to maintain consistency with interface 
 		std::transform(b, e, b, [&](entry_t& el){ return make_pair(cto[el.first], el.second); });
+		
+		// Apply the assignment
 		if (!bool(columns.at(c))){ 
 			columns.at(c) = std::make_unique< vector< entry_t > >(b,e); 
 		} else {
@@ -235,6 +237,43 @@ public:
 		} else {
 			entries.erase(el);
 			--nnz;
+		}
+	}
+	
+	// Adds column entries in given iterator directly to column k
+	template< typename Iter >
+	void add_col(Iter b, const Iter e, size_t k){
+		if (k >= n_cols()){ throw std::invalid_argument("Invalid indexes given"); }
+		if (!bool(columns.at(k))){ columns.at(k) = std::make_unique< vector< entry_t > >(); }
+				
+		// Re-map the current indices to the original indices to maintain consistency with interface 
+		std::transform(b, e, b, [&](entry_t& el){ return make_pair(cto[el.first], el.second); });
+		
+		auto first1 = columns[k]->begin(), last1 = columns[k]->end();
+		vector< entry_t > to_add; 
+		while(true){
+			if (first1 == last1){ 
+				nnz += std::distance(b, e);
+				std::copy(b, e, std::back_inserter(*columns[k])); 
+				break;
+			}
+			if (b == e){ break; }
+			if ((*first1).first == (*b).first){
+				(*first1).second = add((*first1).second, (*b).second);
+				++first1; ++b;
+			} else if ((*first1).first < (*b).first){
+				++first1;
+			} else if ((*b).first < (*first1).first){
+				to_add.push_back((*b));
+				++b;
+			} else {
+				throw std::logic_error("Invalid case");
+			}
+			Rcpp::checkUserInterrupt();
+		}
+		// Add entries retroactively that would've invalidated iterators above
+		for (auto e: to_add){
+			insert(otc[e.first], k, e.second);
 		}
 	}
 	

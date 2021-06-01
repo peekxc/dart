@@ -9,16 +9,20 @@
 PspMatrix <- R6::R6Class("PspMatrix", list(
   matrix = NULL, 
   initialize = function(i=NULL, j=NULL, x=NULL, dims=NULL, type=c("bool", "integer", "numeric")){
-		ijx_supplied <- all(!c(missing(i), missing(j), missing(x)))
+  	i_not_supplied <- missing(i) || is.null(i)
+  	j_not_supplied <- missing(j) || is.null(j)
+		ijx_supplied <- all(!c(i_not_supplied, j_not_supplied, missing(x)|| is.null(x)))
 		matrix_supplied <- FALSE
-  	if (!missing(x) && !is.null(dim(x)) && missing(i) && missing(j)){
+  	if (!missing(x) && !is.null(dim(x)) && i_not_supplied && j_not_supplied){
 			nz_idx <- which(x != 0, arr.ind = TRUE)
 			dims <- dim(x)
 			i <- nz_idx[,1]
 			j <- nz_idx[,2]
 			x <- x[nz_idx]
 			matrix_supplied <- TRUE
-		}
+  	}
+		if (missing(dims) || is.null(dims)){ dims <- dim(x) }
+		stopifnot(!is.null(dims), length(dims) == 2)
   	m <- new(dart:::PspBoolMatrix, dims[1], dims[2])
 		if (ijx_supplied || matrix_supplied){
 			stopifnot(is.vector(i), is.vector(j), is.numeric(x))
@@ -70,7 +74,7 @@ PspMatrix$set("public", "as.Matrix", function(type="CSC") {
 #' @import Matrix 
 #' @export
 psp_matrix <- function(i=NULL, j=NULL, x=NULL, dims=NULL, type=c("bool", "integer", "numeric")){
-	m <- do.call(PspMatrix$new, as.list(match.call())[-1])
+	m <- PspMatrix$new(i=i,j=j,x=x,dims=dims,type=type)
 	return(m)
 }
 

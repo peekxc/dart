@@ -9,8 +9,8 @@ Maintainer: Matt Piekenbrock <matt.piekenbrock@gmail.com>
 Description: This packages provides a set of tools for computing and updating the matrix 
 	decomposition which characterizes the persistent homology of a filtered complex. 
 License: MIT 
-Imports: Rcpp (>= 1.0.4), R6, Matrix, RcppArmadillo, simplextree
-LinkingTo: Rcpp, RcppArmadillo, simplextree
+Imports: Rcpp (>= 1.0.4), R6, Matrix, RcppArmadillo, RcppProgress, simplextree
+LinkingTo: Rcpp, RcppArmadillo, RcppProgress, simplextree
 RoxygenNote: 7.1.1
 Encoding: UTF-8
 SystemRequirements: C++20

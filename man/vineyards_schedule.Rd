@@ -9,15 +9,19 @@ vineyards_schedule(K0, K1, w0 = NULL, w1 = NULL, schedule_order = "default")
 \arguments{
 \item{K0}{filtration}
 
-\item{K1}{filtation, as a list of simplices}
+\item{K1}{filtration, as a list of simplices}
 
-\item{w0}{filtration grades for \code{K0}, in the same order as \code{K0}}
+\item{w0}{optional filtration grades for \code{K0}, in the same order as \code{K0}.}
 
-\item{w1}{filtration grades for \code{K1}, in the same order as \code{K1}}
+\item{w1}{optional filtration grades for \code{K1}, in the same order as \code{K1}}
+
+\item{schedule_order}{method to generate transpositions, either "insertion" or "linear". Default to "insertion", see details.}
 }
 \description{
 Creates a schedule of transpositions needs to transform one filtration into another.
 }
 \details{
 This function assumes K0 and K1 contain the same elements.
+
+This
 }

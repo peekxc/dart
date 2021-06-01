@@ -79,6 +79,61 @@ spearman_dist <- function(x, y = NULL, normalize = FALSE){
 }
 
 
+#' Rank combinations 
+#' @description Ranks combinations lexicographically
+#' @param x (k x m) matrix of the k-combinations to rank, or a list of combinations. 
+#' @param n choice of number system to rank against. Must be at least as large as the largest value in \code{x}.
+#' @details This function is a ranking function which maps k-combinations to their 
+#' position in the lexicographically ordered combinatorial number system. The combinatorial number system
+#' of degree \code{k} is a bijection from all (\code{n} choose \code{k}) combinations to the natural numbers. 
+#' Here, the ranks returned start from 1, and the combinations are expected to not contain 0s. 
+#' The choice of \code{n} affects the ranking, but the ranking will always rank combinations in 
+#' lexicographical order, e.g. \code{rank_combn(c(1,2,3)) < rank_combn(c(1,2,4)) < ...}. 
+#' #' For example, if \code{x}  equals \code{combn(5,2)}, then \code{all(rank_combn(x) == seq_len(choose(5,2)))} 
+#' is \code{TRUE}. \cr
+#' \cr
+#' In general, ranking combinations is faster than unranking them, since the computation reduces
+#' essentially to summing up binomial coefficient. In the case where k = 2, the ranking is 
+#' particularly efficient, since a closed-form solution is known. 
+#' @export
+rank_combn <- function(x, n){
+	if (is.list(x)){
+		stopifnot(all(sapply(x, function(s){ is.numeric(s) & all(s > 0 & s <= n) })))
+		return(sapply(x, function(s){ rank_combn_single_rcpp(s-1L, n)+1L }))
+	} else {
+		if (is.null(dim(x))){ x <- matrix(as.vector(x)) }
+		stopifnot(is.numeric(x), is.matrix(x), all(x != 0 & x <= n))
+		stopifnot(choose(n, nrow(x)) <= (2^64 - 1L))
+		return(rank_combn_rcpp(x-1L, n)+1L)
+	}
+}
+
+#' Unrank combinations 
+#' @description Ranks combinations lexicographically
+#' @param x vector of ranks. 
+#' @param n choice of number system to rank against. Must be at least as large as the largest value in \code{x}.
+#' @param k 
+#' @details This function provides the inverse of the ranking function which maps k-combinations to their lexicographical 
+#' position in the (\code{n} choose \code{k}) combinatorial number system. For example, if \code{x}
+#' equals \code{combn(5,2)}, then \code{all(unrank_combn(seq_len(choose(5,2))) == x)} is \code{TRUE}.
+#' The choice of \code{n} affects the ranking, but the ranking will always rank combinations in 
+#' lexicographical order. \cr
+#' \cr
+#' In general, unranking can be slower than ranking. The current implementation uses an implicit O(k*log(n))
+#' via a binary search to perform the unranking, except in the case where k = 2, which is particularly efficient 
+#' as a closed-form solution is known. 
+#' @export
+unrank_combn <- function(x, n, k){
+	stopifnot(is.numeric(x), length(n) == 1, all(x != 0 & x <= choose(n, max(k))))
+	if (length(k) == 1L){
+		return(unrank_combn_rcpp(x-1L, n, k)+1L)
+	} else {
+		stopifnot(length(k) == length(x))
+		return(lapply(seq_len(length(x)), function(i){ unrank_combn_single_rcpp(x[i]-1L, n, k[i])+1L }))
+	}
+}
+
+
 ## ---- LCS/LIS related ----
 
 #' perm_lcs 

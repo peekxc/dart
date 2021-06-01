@@ -10,6 +10,7 @@
 #' @description The standard PH algorithm (and its variants) 
 #' @details This function applies the standard algorithm to decompose a filtration boundary matrix representation
 #' into a variety of outputs. 
+#' @import RcppProgress
 #' @export
 reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V", "U"), 
 									 indices = NULL,
@@ -20,6 +21,7 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 	} else {
 		coerce_field <- identity
 	}
+	use_clearing <- options[["clearing"]]
 	if ("fbm" %in% class(D)){
 		if (is.list(D$matrix)){
 			D1_psp <- dart::psp_matrix(x = D$matrix[[1]])
@@ -31,7 +33,7 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 			reduce_local_pspbool(
 				D1_ptr = D1_psp$matrix$as_XPtr(), V1_ptr = V1_psp$matrix$as_XPtr(), 
 				D2_ptr = D2_psp$matrix$as_XPtr(), V2_ptr = V2_psp$matrix$as_XPtr(), 
-				clearing = TRUE
+				clearing = use_clearing, show_progress = show_progress
 			)
 			
 			## Clean entries up 
@@ -78,7 +80,8 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 		## Perform the reduction on the whole matrix 
 		D_psp <- dart::psp_matrix(x = D)
 		V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D)))
-		reduce_pspbool(D_psp$matrix$as_XPtr(), V_psp$matrix$as_XPtr())
+		reduce_pspbool(D_ptr = D_psp$matrix$as_XPtr(), V_ptr = V_psp$matrix$as_XPtr(), 
+									 show_progress = show_progress)
 		
 		## Determine the output type
 		if (missing(output) || output == "RV"){
@@ -98,7 +101,7 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 			valid <- validate_decomp(res, D)
 			if (any(!valid)){
 				stop(sprintf("Invalid: R reduced = %s, V triangular = %s, D := RV = %s", 
-										 valid$reduced, valid$triangular, valid$decomposition))
+										 valid["reduced"], valid["triangular"], valid["decomposition"]))
 			}
 		}
 	}
@@ -107,7 +110,7 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 }
 
 print.fbm_decomp <- function(x, ...){
-	cat("Decomposition")
+	cat("R = DV Decomposition")
 }
 
 #' @export
@@ -118,6 +121,38 @@ is_reduced <- function(x){
 	pivots <- apply(x, 2, dart:::low_entry)
 	is_reduced <- !as.logical(anyDuplicated(pivots[pivots != 0]))
 	return(is_reduced)
+}
+
+#' Pivot entries 
+#' @description Returns the pivot entries in a matrix.
+#' @param x a matrix type. 
+#' @details The function returns the (row, column) index pairs of the lowest row entries associated 
+#' to each non-zero column of \code{x}, with optimizations used if \code{x} is a sparse matrix. 
+#' @export
+pivots <- function(x){
+	if ("PspMatrix" %in% class(x)){
+		ci <- seq(x$matrix$n_cols)
+		ri <- sapply(ci-1L, function(j){ x$matrix$low_entry(j)+1 })
+		return(cbind(row=ri[ri != 0], col=ci[ri != 0]))
+	} else if (as.logical(length(grep("*Matrix", class(x))))){
+		if (all(c("i", "p") %in% slotNames(x))){
+			cs <- diff(cumsum(x@p))
+			ri <- x@i[unique(cs)]+1L
+			ci <- which(!duplicated(cs))
+			return(cbind(row=ri,col=ci))
+		} else if ("ddiMatrix" %in% class(x)){
+			stopifnot(ncol(x) == nrow(x))
+			return(cbind(row=seq(nrow(x)), col=seq(nrow(x))))
+		} else {
+			stop("unknown matrix type supplied")
+		}
+	} else if (is.matrix(x)){
+		ci <- seq(ncol(x))
+		ri <- apply(x, 2, dart:::low_entry)
+		return(cbind(row=ri[ri != 0], col=ci[ri != 0]))
+	} else {
+		stop("Unknown matrix type given")
+	}
 }
 
 #' Validates reduction decomposition
@@ -134,12 +169,12 @@ validate_decomp <- function(x, D = NULL, field = c("mod2", "reals")){
 	is_red <- ifelse(is.list(x$R), all(sapply(x$R, is_reduced)), is_reduced(x$R))
 	is_tri <- function(v) { as.logical(Matrix::isTriangular(v)) }
 	if (is.list(x$V)){
-		is_upt <- ifelse(is_psp, sapply(x$V, function(v){ is_tri(as(v, "sparseMatrix")) }))
+		is_upt <- all(sapply(x$V, function(v){ is_tri(as(v, "sparseMatrix")) }))
 	} else {
 		is_upt <- is_tri(as(x$V, "sparseMatrix"))
 	}
 	if (!missing(D)){
-		if (is.list(D)){
+		if ("fbm" %in% class(D) && is.list(D$matrix)){
 			stopifnot(length(D$matrix) == length(x$V), length(D$matrix) == length(x$R))
 			# is_psp <- all(sapply(x$V, function(m) "PspMatrix" %in% class(m)))
 			diff <- lapply(seq_along(D), function(i){ 
@@ -148,18 +183,25 @@ validate_decomp <- function(x, D = NULL, field = c("mod2", "reals")){
 				return(coerce_field(R - DV))
 			})
 			is_dec <- sapply(diff, function(d) all(d == 0))
+		} else if ("fbm" %in% class(D)){
+			R <- coerce_field(as(x$R, "sparseMatrix"))
+			B <- coerce_field(as(D$matrix, "sparseMatrix"))
+			V <- coerce_field(as(x$V, "sparseMatrix"))
+			diff <- coerce_field(R-(B%*%V))
+			is_dec <- all(diff == 0)
 		} else {
-			diff <- coerce_field(x$R - (as(D$matrix, "sparseMatrix") %*% as(x$V, "sparseMatrix")))
-			is_dec <- all(d == 0)
+			stopifnot(!is.null(dim(D)))
+			R <- coerce_field(as(x$R, "sparseMatrix"))
+			B <- coerce_field(as(D, "sparseMatrix"))
+			V <- coerce_field(as(x$V, "sparseMatrix"))
+			diff <- coerce_field(R-(B%*%V))
+			is_dec <- all(diff == 0)
 		}
 	}
 	if (missing(D)){
 		return(c(reduced=is_red, triangular=is_upt))
 	} 
 	return(c(reduced=is_red, triangular=is_upt, decomposition=is_dec))
-	# if (any(!c(is_red, is_upt, is_dec))){
-	# 	stop(sprintf("Invalid: R reduced = %s, V triangular = %s, D := RV = %s", is_red, is_upt, is_dec))
-	# }
 }
 
 #' @export 

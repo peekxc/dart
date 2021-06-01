@@ -254,9 +254,11 @@ simulate_vineyard_local <- function(R1, V1, S, R2=NULL, V2=NULL, f = NULL, D1 = 
 #' @description Creates a schedule of transpositions needs to transform one filtration into another. 
 #' @details This function assumes K0 and K1 contain the same elements. 
 #' @param K0 filtration
-#' @param K1 filtation, as a list of simplices
-#' @param w0 filtration grades for \code{K0}, in the same order as \code{K0}
-#' @param w1 filtration grades for \code{K1}, in the same order as \code{K1}
+#' @param K1 filtration, as a list of simplices
+#' @param w0 optional filtration grades for \code{K0}, in the same order as \code{K0}.
+#' @param w1 optional filtration grades for \code{K1}, in the same order as \code{K1}
+#' @param schedule_order method to generate transpositions, either "insertion" or "linear". Default to "insertion", see details. 
+#' @details This 
 #' @export
 vineyards_schedule <- function(K0, K1, w0=NULL, w1=NULL, schedule_order="default"){
 	stopifnot(is.list(K0), is.list(K1))
