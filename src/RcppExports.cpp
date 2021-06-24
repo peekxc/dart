@@ -51,9 +51,10 @@ BEGIN_RCPP
 END_RCPP
 }
 // move_schedule_local
-void move_schedule_local(SEXP r1, SEXP v1, SEXP r2, SEXP v2, IntegerVector schedule, Nullable< Function > f);
+int move_schedule_local(SEXP r1, SEXP v1, SEXP r2, SEXP v2, IntegerVector schedule, Nullable< Function > f);
 RcppExport SEXP _dart_move_schedule_local(SEXP r1SEXP, SEXP v1SEXP, SEXP r2SEXP, SEXP v2SEXP, SEXP scheduleSEXP, SEXP fSEXP) {
 BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type r1(r1SEXP);
     Rcpp::traits::input_parameter< SEXP >::type v1(v1SEXP);
@@ -61,8 +62,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type v2(v2SEXP);
     Rcpp::traits::input_parameter< IntegerVector >::type schedule(scheduleSEXP);
     Rcpp::traits::input_parameter< Nullable< Function > >::type f(fSEXP);
-    move_schedule_local(r1, v1, r2, v2, schedule, f);
-    return R_NilValue;
+    rcpp_result_gen = Rcpp::wrap(move_schedule_local(r1, v1, r2, v2, schedule, f));
+    return rcpp_result_gen;
 END_RCPP
 }
 // reduce_arma
@@ -519,6 +520,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// sparse_complex
+NumericVector sparse_complex(SEXP st_ptr, SEXP st_out, const NumericVector& lambda, const double alpha, const double epsilon);
+RcppExport SEXP _dart_sparse_complex(SEXP st_ptrSEXP, SEXP st_outSEXP, SEXP lambdaSEXP, SEXP alphaSEXP, SEXP epsilonSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type st_ptr(st_ptrSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type st_out(st_outSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< const double >::type alpha(alphaSEXP);
+    Rcpp::traits::input_parameter< const double >::type epsilon(epsilonSEXP);
+    rcpp_result_gen = Rcpp::wrap(sparse_complex(st_ptr, st_out, lambda, alpha, epsilon));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 RcppExport SEXP _rcpp_module_boot_PspBoolMatrix();
 RcppExport SEXP _rcpp_module_boot_implicit_filtration_module();
@@ -565,6 +581,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_dart_span_intersections", (DL_FUNC) &_dart_span_intersections, 6},
     {"_dart_relative_transpositions", (DL_FUNC) &_dart_relative_transpositions, 2},
     {"_dart_bentley_ottmann", (DL_FUNC) &_dart_bentley_ottmann, 1},
+    {"_dart_sparse_complex", (DL_FUNC) &_dart_sparse_complex, 5},
     {"_rcpp_module_boot_PspBoolMatrix", (DL_FUNC) &_rcpp_module_boot_PspBoolMatrix, 0},
     {"_rcpp_module_boot_implicit_filtration_module", (DL_FUNC) &_rcpp_module_boot_implicit_filtration_module, 0},
     {NULL, NULL, 0}

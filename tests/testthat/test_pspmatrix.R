@@ -29,6 +29,20 @@ testthat::test_that("Can clean zeroed entries", {
 	testthat::expect_equal(A$matrix$nnz, 2L)
 })
 
+A <- as(Matrix::rsparsematrix(10,15,density = 0.35), "lgCMatrix")
+P <- psp_matrix(x = A) 
+for (i in seq(10)){
+	pr <- sample(seq(nrow(A)))
+	P$matrix$permute_rows(pr-1L)
+	print(all(A[pr,] == P$as.Matrix()))
+	A <- A[pr,]
+}
+
+low_A <- apply(A, 2, dart:::low_entry)
+low_P <- sapply(seq(ncol(A))-1L, function(j){ P$matrix$low_entry(j) }) + 1L
+low_A == low_P
+
+
 testthat::test_that("Can do random operations", {
 	M <- Matrix::rsparsematrix(10,10,density = 0.35)
 	ij <- which(M != 0, arr.ind = TRUE)

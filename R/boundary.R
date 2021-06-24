@@ -6,6 +6,7 @@
 #' @param field intended 
 #' @details This function computes and returns the elementary chains associated with a filtered simplicial complex.
 #' The filtration is expected to be given as list of a simplices.  
+#' @import Matrix
 #' @export
 boundary_matrix <- function(x, dims="all", labeled=c("none", "columns", "both"), field=c("mod2", "integer", "real")){
 	if (is.list(x)){ x <- filtration(x) }

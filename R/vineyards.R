@@ -279,20 +279,24 @@ vineyards_schedule <- function(K0, K1, w0=NULL, w1=NULL, schedule_order="default
 	
 	## If wanted, attempt to form the homotopy, otherwise don't bother  and just report the inversions
 	if (missing(schedule_order) || schedule_order %in% c("default", "insertion")){
-		S <- dart:::relative_transpositions(length(K0), inv[,rev(seq(ncol(inv)))])+1L
-		# is_valid_schedule <- all(apply(S, 2, diff) == 1L)
-		is_valid_schedule <- all(diff(S)[seq(from = 1, to = ncol(S)-1L, by = 2)] == 1L)
-		if (!is_valid_schedule){
-			stop("Failed to accurately order transpositions due to rounding issues.")
+		S <- dart:::relative_transpositions(length(K0), inv[,ncol(inv):1L,drop=FALSE])+1L
+		if (ncol(S) > 1){
+			is_valid_schedule <- !any(abs(S[2,]-S[1,]) != 1)
+			if (!is_valid_schedule){
+				stop("Failed to accurately order transpositions due to rounding issues.")
+			}
 		}
 		return(list(schedule=S, lambda=NA))
 	} else {
 		int_points <- dart:::span_intersections(inv, w0, w1[match(K0, K1)], 0.0, 1.0)
 		order_idx <- rev(order(int_points[1,], decreasing = TRUE))
-		S <- dart:::relative_transpositions(length(K0), inv[,order_idx])+1L
-		is_valid_schedule <- all(diff(S)[seq(from = 1, to = ncol(S)-1L, by = 2)] == 1L)
-		if (!is_valid_schedule){
-			stop("Failed to accurately order transpositions according to linear homotopy due to rounding issues.")
+		# order_idx <- rev(kdtools::lex_sort(cbind(-int_points[1,], int_points[2,], -t(inv)[,2:1], seq(ncol(inv))))[,5])
+		S <- dart:::relative_transpositions(length(K0), inv[,order_idx,drop=FALSE])+1L
+		if (ncol(S) > 1){
+			is_valid_schedule <- !any(abs(S[2,]-S[1,]) != 1)
+			if (!is_valid_schedule){
+				stop("Failed to accurately order transpositions according to linear homotopy due to rounding issues.")
+			}
 		}
 		return(list(schedule=S, lambda=int_points[1,order_idx]))
 	}

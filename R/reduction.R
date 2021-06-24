@@ -30,7 +30,7 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 			V2_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix[[2]])))
 			
 			## Perform the reductions on each of the matrices
-			reduce_local_pspbool(
+			nc <- reduce_local_pspbool(
 				D1_ptr = D1_psp$matrix$as_XPtr(), V1_ptr = V1_psp$matrix$as_XPtr(), 
 				D2_ptr = D2_psp$matrix$as_XPtr(), V2_ptr = V2_psp$matrix$as_XPtr(), 
 				clearing = use_clearing, show_progress = show_progress
@@ -55,13 +55,14 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 			} else if (out == "V"){
 				res <- list(V=list(V1_psp, V2_psp))
 			}
+			res$nc <- nc
 		} else {
 			stopifnot(!is.null(dim(D$matrix)))
 			
 			## Perform the reduction on the whole matrix 
 			D_psp <- dart::psp_matrix(x = D$matrix)
 			V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix)))
-			reduce_pspbool(D_psp$matrix$as_XPtr(), V_psp$matrix$as_XPtr())
+			nc <- reduce_pspbool(D_psp$matrix$as_XPtr(), V_psp$matrix$as_XPtr(), show_progress=show_progress)
 			
 			## Determine the output type
 			if (missing(output) || output == "RV"){
@@ -74,13 +75,14 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 			} else if (out == "V"){
 				res <- list(V=V_psp)
 			}
+			res$nc <- nc
 		}
 	} else {
 		stopifnot(!is.null(dim(D)))
 		## Perform the reduction on the whole matrix 
 		D_psp <- dart::psp_matrix(x = D)
 		V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D)))
-		reduce_pspbool(D_ptr = D_psp$matrix$as_XPtr(), V_ptr = V_psp$matrix$as_XPtr(), 
+		nc <- reduce_pspbool(D_ptr = D_psp$matrix$as_XPtr(), V_ptr = V_psp$matrix$as_XPtr(), 
 									 show_progress = show_progress)
 		
 		## Determine the output type
@@ -94,6 +96,7 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 		} else if (out == "V"){
 			res <- list(V=V_psp)
 		}
+		res$nc <- nc
 	}
 	class(res) <- "fbm_decomp"
 	if (validate){
@@ -202,6 +205,30 @@ validate_decomp <- function(x, D = NULL, field = c("mod2", "reals")){
 		return(c(reduced=is_red, triangular=is_upt))
 	} 
 	return(c(reduced=is_red, triangular=is_upt, decomposition=is_dec))
+}
+
+#' ph
+#' @param x point cloud matrix, 'dist' object, or Filtration.
+#' @export
+ph <- function(x, type = c("rips", "cech", "delaunay"), dim = 0:2){
+	fi <- dart::rips_filtration(x, dim = max(dim))
+	D <- dart::boundary_matrix(fi, dims = dim)
+	rv <- reduce(D)
+	
+	
+	
+	# for (n in 3:15){
+	# 	for (i in 1:100){
+	# 		set.seed(i)
+	# 		x1 <- replicate(2, rnorm(n))
+	# 		x2 <- x1 + replicate(2, runif(nrow(x1)))
+	# 		r1 <- rips_filtration(x1, diameter = Inf, dim = 2)
+	# 		r2 <- rips_filtration(x2, diameter = Inf, dim = 2)
+	# 		S <- vineyards_schedule(r1$simplices, r2$simplices, w0 = r1$grading, w1 = r2$grading, schedule_order = "linear")
+	# 	}
+	# }
+
+	
 }
 
 #' @export 
@@ -341,158 +368,153 @@ permute_move <- function(M, i, j, dims = c("both", "rows", "cols")){
 		stop("Input must be a matrix or a vector.")
 	}
 }
-#' 
-#' # ## Moves the column at position i to position j
-#' # permute_col <- function(M, i, j){
-#' # 	p <- c(setdiff(seq(j), i), i)
-#' # 	if (j < ncol(M)){ p <- c(p, seq(j+1, ncol(M))) }
-#' # 	pc <- pbgrad::permutation_matrix(Matrix::invPerm(p))
-#' # 	return(M %*% pc)
-#' # }
-#' # 
-#' # permute_row <- function(M, i, j){
-#' # 	p <- c(setdiff(seq(j), i), i)
-#' # 	if (j < nrow(M)){ p <- c(p, seq(j+1, nrow(M))) }
-#' # 	pr <- pbgrad::permutation_matrix(p)
-#' # 	return(pr %*% M)
-#' # }
-#' # 
-#' # # Moves the i'th row/column to the j'th row/column
-#' # permute_ij <- function(M, i, j){
-#' # 	permute_row(permute_col(M, i, j), i, j)
-#' # }
-#' # 
-#' # move_left <- function(R, V, i, j){
-#' # 	stopifnot(i >= j, ncol(R) == ncol(V), j < ncol(R), j <= ncol(R))
-#' # 	if (i == j){ return(list(R=R,V=V)) }
-#' # 	.pivot_row <- function(x) { idx <- which(as.vector(x) != 0); ifelse(length(idx) == 0, 0, tail(idx, 1L)) }
-#' # 	I <- seq(j,i)[which(V[j,seq(j,i)] != 0)]
-#' # 	# I <- seq(j,i)[which(V[seq(j,i),i] != 0)]
-#' # 	stopifnot(length(I) > 0)
-#' # 	
-#' # 	## Solution 1 for obtaining J 
-#' # 	J <- which(R[i,] != 0)
-#' # 	J <- intersect(J, with(list(low_j=apply(R[,J,drop=FALSE], 2, .pivot_row)), { J[low_j >= j & low_j <= i] }))
-#' # 	
-#' # 	## Restore R, V
-#' # 	# i_d <- which.min(apply(R[,I,drop=FALSE], 2, .pivot_row))
-#' # 	result1 <- restore(R, V, I)
-#' # 	R_new <- result1$R
-#' # 	V_new <- result1$V
-#' # 	
-#' # 	## Restore R_1, V_1
-#' # 	if (length(J) > 1){
-#' # 		result2 <- restore(R_new, V_new, J)
-#' # 		R_new <- result2$R
-#' # 		V_new <- result2$V
-#' # 	}
-#' # 	
-#' # 	## Generate the permutation 
-#' # 	Rh <- permute_move(R_new, i, j)
-#' # 	Vh <- permute_move(V_new, i, j)
-#' # 	
-#' # 	## Replace newly moved columns with the donors and return 
-#' # 	Rh[,i] <- permute_move(result1$d_colR, i, j, dims = "rows")
-#' # 	Vh[,i] <- permute_move(result1$d_colV, i, j, dims = "rows")
-#' # 	return(list(R=Rh, V=Vh))
-#' # } 
-#' 
-#' # move_left <- function(R, V, i, j, state=c(FALSE, FALSE, FALSE, FALSE)){
-#' # 	# stopifnot(j < i, ncol(R) == ncol(V), i < ncol(R), j <= ncol(R))
-#' # 	if (i == j){ return(list(R=R,V=V)) }
-#' # 	.pivot_row <- function(x) { idx <- which(as.vector(x) != 0); ifelse(length(idx) == 0, 0, tail(idx, 1L)) }
-#' # 	if (state[4]){
-#' # 		I <- seq(j,i)[which(V[i,seq(j,i)] != 0)]
-#' # 	} else {
-#' # 		I <- seq(j,i)[which(V[seq(j,i), i] != 0)]
-#' # 	}
-#' # 	stopifnot(length(I) > 0)
-#' # 	
-#' # 	## Solution 1 for obtaining J (should be 9,10)
-#' # 	J <- which(R[i,] != 0)
-#' # 	J <- intersect(J, with(list(low_j=apply(R[,J,drop=FALSE], 2, .pivot_row)), { J[low_j >= i & low_j <= j] }))
-#' # 	# print(length(J))
-#' # 	
-#' # 	## Restore R, V
-#' # 	# i_d <- which.min(apply(R[,I,drop=FALSE], 2, .pivot_row))
-#' # 	if (!state[1]){ I <- rev(I) }
-#' # 	result1 <- restore_l(R, V, I)
-#' # 	R_new <- result1$R
-#' # 	V_new <- result1$V
-#' # 	
-#' # 	## Restore R_1, V_1
-#' # 	if (length(J) > 1){
-#' # 		print("J")
-#' # 		result2 <- restore(R_new, V_new, J, state)
-#' # 		R_new <- result2$R
-#' # 		V_new <- result2$V
-#' # 	}
-#' # 	
-#' # 	## Generate the permutation 
-#' # 	Rh <- permute_move(R_new, i, j)
-#' # 	Vh <- permute_move(V_new, i, j)
-#' # 	
-#' # 	## Replace newly moved columns with the donors and return 
-#' # 	if (state[5]){
-#' # 		Rh[,j] <- permute_move(result1$d_colR, i, j, "rows")
-#' # 		Vh[,j] <- permute_move(result1$d_colV, i, j, "rows")
-#' # 	} else {
-#' # 		Rh[,i] <- permute_move(result1$d_colR, i, j, "rows")
-#' # 		Vh[,i] <- permute_move(result1$d_colV, i, j, "rows")
-#' # 	}
-#' # 	return(list(R=Rh, V=Vh))
-#' # } 
-#' 
-#' 
-#' 
-#' # restore(reduction$R, reduction$V, I = )
-#' 
-#' # wrapper to generate a boundary matrix 
-#' Reduction$set("public", "boundary_matrix", function(dim = "all"){
-#' 	stopifnot(missing(dim) || dim == "all" || is.numeric(dim))
-#' 	if (missing(dim) || dim == "all"){
-#' 		S <- sapply(self$filtration, length)
-#' 		ns <- sum(S)
-#' 		M <- Matrix::Matrix(0, nrow = ns, ncol = ns, sparse = TRUE)
-#' 		if (length(S) <= 1){ return(M) } # otherwise length(S) >= 2 
-#' 		cs <- cumsum(S)
-#' 		for (j in seq(2, length(self$filtration))){
-#' 			col_idx <- setdiff(seq(cs[j]), seq(cs[j-1])) 
-#' 			row_idx <- setdiff(seq(cs[j-1]), seq(cs[j-2]))
-#' 			M[row_idx, col_idx] <- self$boundary_matrix(j-1)
-#' 		}
-#' 		nv <- S[1]
-#' 		sn <- unlist(sapply(seq(length(self$filtration)), function(i){ simplex_to_str(unrank_lex(self$filtration[[i]], n = nv, k = i)) }))
-#' 		dimnames(M) <- list(sn, sn)
-#' 		return(M)
-#' 	} else if (is.numeric(dim)){
-#' 		d <- dim + 1L
-#' 		if (length(self$filtration) < d){ return(matrix(numeric(length = 0L), nrow = 0L, ncol = 0L))}
-#' 		domain_simplices <- self$filtration[d]
-#' 		if (d == 1){
-#' 			nv <- length(self$filtration[[1]])
-#' 			M <- Matrix::Matrix(matrix(numeric(length = 0L), nrow = 0L, ncol = nv, dimnames = list(NULL, self$filtration[[1]])))
-#' 			return(M)
-#' 		} else {
-#' 			nv <- length(self$filtration[[1]])
-#' 			{ C <- self$filtration[[d]]; R <- self$filtration[[d-1]] }
-#' 			{ nc <- length(C); nr <- length(R) }
-#' 			face_indices <- lapply(C, function(c){ rank_lex(combn(unrank_lex(x = c, n = nv, k = d), m = d-1), n = nv) })
-#' 			j <- rep(seq(length(face_indices)), each = d)
-#' 			i <- unlist(lapply(face_indices, function(lex_idx){ match(lex_idx, R) }))
-#' 			x <- rep((-1)^seq(0, d-1), nc)
-#' 			cn <- simplex_to_str(unrank_lex(C, n = nv, k = d))
-#' 			rn <- simplex_to_str(unrank_lex(R, n = nv, k = d-1))
-#' 			D <- Matrix::sparseMatrix(i, j, x = x, dims = c(nr, nc), dimnames = list(rn,cn))
-#' 			return(D)
-#' 		}
-#' 	}
-#' })
-#' 
-#' 
-#' 
-#' 
-#' 
-#' 
-#' 
-#' 
+
+
+# 
+# # ## Moves the column at position i to position j
+# # permute_col <- function(M, i, j){
+# # 	p <- c(setdiff(seq(j), i), i)
+# # 	if (j < ncol(M)){ p <- c(p, seq(j+1, ncol(M))) }
+# # 	pc <- pbgrad::permutation_matrix(Matrix::invPerm(p))
+# # 	return(M %*% pc)
+# # }
+# #
+# # permute_row <- function(M, i, j){
+# # 	p <- c(setdiff(seq(j), i), i)
+# # 	if (j < nrow(M)){ p <- c(p, seq(j+1, nrow(M))) }
+# # 	pr <- pbgrad::permutation_matrix(p)
+# # 	return(pr %*% M)
+# # }
+# #
+# # # Moves the i'th row/column to the j'th row/column
+# # permute_ij <- function(M, i, j){
+# # 	permute_row(permute_col(M, i, j), i, j)
+# # }
+# #
+# # move_left <- function(R, V, i, j){
+# # 	stopifnot(i >= j, ncol(R) == ncol(V), j < ncol(R), j <= ncol(R))
+# # 	if (i == j){ return(list(R=R,V=V)) }
+# # 	.pivot_row <- function(x) { idx <- which(as.vector(x) != 0); ifelse(length(idx) == 0, 0, tail(idx, 1L)) }
+# # 	I <- seq(j,i)[which(V[j,seq(j,i)] != 0)]
+# # 	# I <- seq(j,i)[which(V[seq(j,i),i] != 0)]
+# # 	stopifnot(length(I) > 0)
+# #
+# # 	## Solution 1 for obtaining J
+# # 	J <- which(R[i,] != 0)
+# # 	J <- intersect(J, with(list(low_j=apply(R[,J,drop=FALSE], 2, .pivot_row)), { J[low_j >= j & low_j <= i] }))
+# #
+# # 	## Restore R, V
+# # 	# i_d <- which.min(apply(R[,I,drop=FALSE], 2, .pivot_row))
+# # 	result1 <- restore(R, V, I)
+# # 	R_new <- result1$R
+# # 	V_new <- result1$V
+# #
+# # 	## Restore R_1, V_1
+# # 	if (length(J) > 1){
+# # 		result2 <- restore(R_new, V_new, J)
+# # 		R_new <- result2$R
+# # 		V_new <- result2$V
+# # 	}
+# #
+# # 	## Generate the permutation
+# # 	Rh <- permute_move(R_new, i, j)
+# # 	Vh <- permute_move(V_new, i, j)
+# #
+# # 	## Replace newly moved columns with the donors and return
+# # 	Rh[,i] <- permute_move(result1$d_colR, i, j, dims = "rows")
+# # 	Vh[,i] <- permute_move(result1$d_colV, i, j, dims = "rows")
+# # 	return(list(R=Rh, V=Vh))
+# # }
+# 
+# # move_left <- function(R, V, i, j, state=c(FALSE, FALSE, FALSE, FALSE)){
+# # 	# stopifnot(j < i, ncol(R) == ncol(V), i < ncol(R), j <= ncol(R))
+# # 	if (i == j){ return(list(R=R,V=V)) }
+# # 	.pivot_row <- function(x) { idx <- which(as.vector(x) != 0); ifelse(length(idx) == 0, 0, tail(idx, 1L)) }
+# # 	if (state[4]){
+# # 		I <- seq(j,i)[which(V[i,seq(j,i)] != 0)]
+# # 	} else {
+# # 		I <- seq(j,i)[which(V[seq(j,i), i] != 0)]
+# # 	}
+# # 	stopifnot(length(I) > 0)
+# #
+# # 	## Solution 1 for obtaining J (should be 9,10)
+# # 	J <- which(R[i,] != 0)
+# # 	J <- intersect(J, with(list(low_j=apply(R[,J,drop=FALSE], 2, .pivot_row)), { J[low_j >= i & low_j <= j] }))
+# # 	# print(length(J))
+# #
+# # 	## Restore R, V
+# # 	# i_d <- which.min(apply(R[,I,drop=FALSE], 2, .pivot_row))
+# # 	if (!state[1]){ I <- rev(I) }
+# # 	result1 <- restore_l(R, V, I)
+# # 	R_new <- result1$R
+# # 	V_new <- result1$V
+# #
+# # 	## Restore R_1, V_1
+# # 	if (length(J) > 1){
+# # 		print("J")
+# # 		result2 <- restore(R_new, V_new, J, state)
+# # 		R_new <- result2$R
+# # 		V_new <- result2$V
+# # 	}
+# #
+# # 	## Generate the permutation
+# # 	Rh <- permute_move(R_new, i, j)
+# # 	Vh <- permute_move(V_new, i, j)
+# #
+# # 	## Replace newly moved columns with the donors and return
+# # 	if (state[5]){
+# # 		Rh[,j] <- permute_move(result1$d_colR, i, j, "rows")
+# # 		Vh[,j] <- permute_move(result1$d_colV, i, j, "rows")
+# # 	} else {
+# # 		Rh[,i] <- permute_move(result1$d_colR, i, j, "rows")
+# # 		Vh[,i] <- permute_move(result1$d_colV, i, j, "rows")
+# # 	}
+# # 	return(list(R=Rh, V=Vh))
+# # }
+# 
+# 
+# 
+# # restore(reduction$R, reduction$V, I = )
+# 
+# # wrapper to generate a boundary matrix
+# Reduction$set("public", "boundary_matrix", function(dim = "all"){
+# 	stopifnot(missing(dim) || dim == "all" || is.numeric(dim))
+# 	if (missing(dim) || dim == "all"){
+# 		S <- sapply(self$filtration, length)
+# 		ns <- sum(S)
+# 		M <- Matrix::Matrix(0, nrow = ns, ncol = ns, sparse = TRUE)
+# 		if (length(S) <= 1){ return(M) } # otherwise length(S) >= 2
+# 		cs <- cumsum(S)
+# 		for (j in seq(2, length(self$filtration))){
+# 			col_idx <- setdiff(seq(cs[j]), seq(cs[j-1]))
+# 			row_idx <- setdiff(seq(cs[j-1]), seq(cs[j-2]))
+# 			M[row_idx, col_idx] <- self$boundary_matrix(j-1)
+# 		}
+# 		nv <- S[1]
+# 		sn <- unlist(sapply(seq(length(self$filtration)), function(i){ simplex_to_str(unrank_lex(self$filtration[[i]], n = nv, k = i)) }))
+# 		dimnames(M) <- list(sn, sn)
+# 		return(M)
+# 	} else if (is.numeric(dim)){
+# 		d <- dim + 1L
+# 		if (length(self$filtration) < d){ return(matrix(numeric(length = 0L), nrow = 0L, ncol = 0L))}
+# 		domain_simplices <- self$filtration[d]
+# 		if (d == 1){
+# 			nv <- length(self$filtration[[1]])
+# 			M <- Matrix::Matrix(matrix(numeric(length = 0L), nrow = 0L, ncol = nv, dimnames = list(NULL, self$filtration[[1]])))
+# 			return(M)
+# 		} else {
+# 			nv <- length(self$filtration[[1]])
+# 			{ C <- self$filtration[[d]]; R <- self$filtration[[d-1]] }
+# 			{ nc <- length(C); nr <- length(R) }
+# 			face_indices <- lapply(C, function(c){ rank_lex(combn(unrank_lex(x = c, n = nv, k = d), m = d-1), n = nv) })
+# 			j <- rep(seq(length(face_indices)), each = d)
+# 			i <- unlist(lapply(face_indices, function(lex_idx){ match(lex_idx, R) }))
+# 			x <- rep((-1)^seq(0, d-1), nc)
+# 			cn <- simplex_to_str(unrank_lex(C, n = nv, k = d))
+# 			rn <- simplex_to_str(unrank_lex(R, n = nv, k = d-1))
+# 			D <- Matrix::sparseMatrix(i, j, x = x, dims = c(nr, nc), dimnames = list(rn,cn))
+# 			return(D)
+# 		}
+# 	}
+# })
+

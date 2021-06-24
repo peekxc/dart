@@ -25,7 +25,7 @@ PspMatrix <- R6::R6Class("PspMatrix", list(
 		stopifnot(!is.null(dims), length(dims) == 2)
   	m <- new(dart:::PspBoolMatrix, dims[1], dims[2])
 		if (ijx_supplied || matrix_supplied){
-			stopifnot(is.vector(i), is.vector(j), is.numeric(x))
+			stopifnot(is.vector(i), is.vector(j), is.numeric(x) || is.logical(x))
 			m$construct(i-1L,j-1L,x)
 		} 
 		self$matrix <- m
@@ -34,11 +34,15 @@ PspMatrix <- R6::R6Class("PspMatrix", list(
   	if (self$matrix$nnz == 0){ cat(sprintf("< empty %d x %d PSP matrix >\n", self$matrix$n_rows, self$matrix$n_cols)) }
 	  else {
 	    cat(sprintf("%d x %d Permutable Sparse Matrix with %d non-zero entries", self$matrix$n_rows, self$matrix$n_cols, self$matrix$nnz))
+	  	if (self$matrix$n_rows <= 150 && self$matrix$n_cols <= 150){
+	  		show(self$as.Matrix())
+	  	}
 	  }
   }
 ))
 
-PspMatrix$set("public", "as.Matrix", function(type="CSC") {
+PspMatrix$set("public", "as.Matrix", function(type="CSC", clean=TRUE) {
+	if (clean){ self$matrix$clean(0) }
   return(self$matrix$as.Matrix())
 })
 

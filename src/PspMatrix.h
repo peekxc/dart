@@ -8,6 +8,8 @@
 #include <tuple>
 #include <sstream>
 
+#include "combinadic.h"
+
 using std::size_t;
 using std::tuple;
 using std::pair; 
@@ -35,11 +37,14 @@ public:
 	vector< size_t > cto;  // current-to-original map
 	vector< size_t > otc;	 // original-to-current map
 	
+	// TODO: Is there a way of moving this outside of PspMatrix?
+	// vector< optional< size_t > > 
+	
 	BinaryOperation add; 
-	const array< size_t, 2 > size; 
+	array< size_t, 2 > size = { 0, 0 };
 	size_t nnz = 0;
-	constexpr size_t n_rows() const { return size.size() < 1 ? 0 : size[0]; };
-	constexpr size_t n_cols() const { return size.size() < 2 ? 0 : size[1]; };
+	constexpr size_t n_rows() const { return size[0]; };
+	constexpr size_t n_cols() const { return size[1]; };
 	
 	PspMatrix(const size_t m, const size_t n) : columns(n), cto(m), otc(m), size({ m, n }){
 		for (size_t i = 0; i < n; ++i){
@@ -136,10 +141,11 @@ public:
 		if (j >= n_cols()){ throw std::invalid_argument("Invalid column index given."); }
 		if (r >= n_rows()){ throw std::invalid_argument("Invalid row index given."); }
 		vector< entry_t >& entries = *columns.at(j);
-		auto el = std::find_if(std::begin(entries), std::end(entries), [this, r](entry_t& e){
-			return(otc[e.first] == r);
+		const auto ri = cto[r];
+		auto el = std::lower_bound(std::begin(entries), std::end(entries), ri, [](entry_t& e, size_t index){
+			return(e.first < index);
 		});
-		if (el == std::end(entries) || otc[el->first] != r){ return std::nullopt; } 
+		if (el == std::end(entries) || el->first != ri){ return std::nullopt; } 
 		else {
 			return(std::make_optional(std::make_pair(otc[el->first], el->second)));
 		}
@@ -226,13 +232,19 @@ public:
 		if (i >= n_rows() || j >= n_cols()){ return; }
 		if (!bool(columns.at(j))){ return; }
 		vector< entry_t >& entries = *columns.at(j);
+		
 		// auto el = std::lower_bound(std::begin(entries), std::end(entries), cto[i], [this](entry_t& e, size_t index){
 		// 	return(e.first < index);
 		// });
-		auto el = std::find_if(std::begin(entries), std::end(entries), [this, i](entry_t& e){
-			return(otc[e.first] == i);
+		auto o_idx = cto[i]; // original index to search for
+		auto el = std::lower_bound(std::begin(entries), std::end(entries), o_idx, [](entry_t& e, size_t index){
+			return(e.first < index);
 		});
-		if (el == std::end(entries) || otc[el->first] != i){ 
+		// auto el = std::find_if(std::begin(entries), std::end(entries), [this, i](entry_t& e){
+		// 	return(otc[e.first] == i);
+		// });
+		// if (el == std::end(entries) || otc[el->first] != i){
+		if (el == std::end(entries) || el->first != o_idx){
 			return; 
 		} else {
 			entries.erase(el);
@@ -370,26 +382,17 @@ public:
 		if (!bool(columns[j]) || columns[j]->size() == 0){ return(std::nullopt); }
 		
 		// Get non-zero entry w/ maximum row index
+		// Note this essentially has to be take O(nnz_j) time, since we are asking for the lowest 
+		// *current* row index instead of the lowest *original* index
 		const auto& c = *columns[j];
-		size_t best = 0;
+		size_t best = 0; 
 		for (size_t ri = 0; ri < c.size(); ++ri){
-			// std::cout << "checking: " << ri << ", " << (c[ri].second != 0) << ", " << (otc[c[ri].first] >= best) << std::endl;
-			if ((c[ri].second != 0) && otc[c[ri].first] >= best){
+			if (otc[c[ri].first] >= otc[c[best].first] && !equals_zero(c[ri].second)){
 				best = ri; 
 			}
 		}
-		if (best == -1 || equals_zero(c[best].second)){ return(std::nullopt); }
+		if (equals_zero(c[best].second)){ return(std::nullopt); }
 		return std::make_optional(std::make_pair(otc[c[best].first], c[best].second));
-		// auto me = std::max_element(c.begin(), c.end(), [this](auto& e1, auto& e2){
-		// 	if (equals_zero(e1.second)){ return(true); }
-		// 	if (equals_zero(e2.second)){ return(false); }
-		// 	return otc[e1.first] < otc[e2.first];
-		// });
-		
-		// if max element is a (stored) zero, return nullopt
-		// if (equals_zero((*me).second)){ return(std::nullopt); }
-		// 
-		// return(std::make_optional(std::make_pair(otc[(*me).first], (*me).second)));
 	}
 	
 	void swap_rows(size_t i, size_t j){
@@ -412,19 +415,23 @@ public:
 		const size_t n = std::distance(b,e);
 		if (n != n_rows()){ throw std::invalid_argument("Permutation must match number of rows."); }
 		
-		// Prepare permutation + inverse permutation
-		vector< size_t > p(b,e), ip(n);
-		for (size_t i = 0; i < n; ++i){ ip[p[i]] = i; } //   inverse permutation 
+		vector< size_t > p(b,e);
+		apply_permutation(cto.begin(), cto.end(), p.begin());
+		otc = inverse_permutation(cto.begin(), cto.end());
 		
-		// Map the row permutation to a new vector
-		for (size_t i = 0; i < n; ++i){ 
-			p[i] = cto[p[i]];    // compute permutation vector 
-			ip[i] = cto[ip[i]];	 // compute inverse permutation vector
-		}
-		
-		// Update the row correspondences
-		std::move(p.begin(), p.end(), cto.begin());
-		std::move(ip.begin(), ip.end(), otc.begin());
+		// // Prepare permutation + inverse permutation
+		// vector< size_t > p(b,e), ip(n);
+		// for (size_t i = 0; i < n; ++i){ ip[p[i]] = i; } //   inverse permutation 
+		// 
+		// // Map the row permutation to a new vector
+		// for (size_t i = 0; i < n; ++i){ 
+		// 	p[i] = cto[p[i]];    // compute permutation vector 
+		// 	ip[i] = cto[ip[i]];	 // compute inverse permutation vector
+		// }
+		// 
+		// // Update the row correspondences
+		// std::move(p.begin(), p.end(), cto.begin());
+		// std::move(ip.begin(), ip.end(), otc.begin());
 	}
 
 	// Convenience method
@@ -517,7 +524,7 @@ public:
 	// }
 		
 	// Sets an element at position (i,j) to value 'val'
-	// TODO: Fix this need to remove lower_bound, otherwise redundant entries exist , or need to guarentee sorting
+	// TODO: Test to ensure lower_bound applies here
 	void insert(size_t i, size_t j, T val) {
 		if (i >= n_rows() || j >= n_cols()){ throw std::invalid_argument("Invalid"); }
 		if (!bool(columns.at(j))){ columns.at(j) = std::make_unique< vector< entry_t > >(); }

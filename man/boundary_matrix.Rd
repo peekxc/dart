@@ -6,19 +6,19 @@
 \usage{
 boundary_matrix(
   x,
-  dim = "all",
-  labeled = TRUE,
+  dims = "all",
+  labeled = c("none", "columns", "both"),
   field = c("mod2", "integer", "real")
 )
 }
 \arguments{
 \item{x}{list of simplices, simplex tree, or a filtration.}
 
-\item{dim}{dimension of boundary matrix desired}
-
 \item{labeled}{whether to add simplex labels to the corresponding matrices.}
 
 \item{field}{intended}
+
+\item{dim}{dimension of boundary matrix desired}
 }
 \description{
 Constructs filtration boundary matrices

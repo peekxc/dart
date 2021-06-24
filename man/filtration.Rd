@@ -9,8 +9,9 @@ filtration(simplices, grades = NULL, persistent = TRUE)
 \arguments{
 \item{simplices}{list of simplices in filtration order, or a simplex tree.}
 
-\item{grades}{numeric vector of grades of 'weights' of simplices, in filtration order 
-if \code{simplices} is a list or shortlex order is a simplex tree.}
+\item{grades}{numeric vector of grades or 'weights' of vertices, edges, or simplices. If \code{simplices}
+is a list, \code{grades} is expected to be in filtration order, otherwise in shortlex order if \code{simplices} 
+is a simplex tree.}
 }
 \value{
 a \code{Filtration} \link[R6]{R6} object.

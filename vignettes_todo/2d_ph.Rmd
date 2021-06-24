@@ -42,6 +42,18 @@ points(noise, pch = 20, cex =0.80)
 
 ```
 
+```{r}
+S <- sparse_rips_filtration(x, dim = 2)
+s <- S$simplices
+f1 <- S$grading
+f2 <- sapply(s, function(simplex){ max(predict(x_kde, x=x[simplex,])) })
+bifiltration <- lapply(seq_along(s), function(i){
+	sprintf("%s ; %g %g", paste0(as.character(s[[i]]), collapse = " "), f1[i], f2[i])
+})
+bigraded_betti2(s, f1, f2)
+
+```
+
 ```{r rivet_console}
 R <- simplextree::rips(dist(x), dim = 2, eps = 1.1, filtered = TRUE)
 dist_f <- R$weights
@@ -354,6 +366,10 @@ plot.hilbert <- function(x, betti=c(0,1,2), show_grid=TRUE, ...){
 ```
 
 Putting it all together
+```{r sparse filtration}
+
+```
+
 ```{r all}
 ro <- bigraded_betti(x, f = dens_v, H = 1L, xbin = 10, ybin = 10, xreverse = TRUE, max_dist = 1.1, 
 										 rivet_path = "~/rivet", save.path = "pc_f.txt")

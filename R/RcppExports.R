@@ -17,7 +17,7 @@ simulate_vineyard_pspbool <- function(R_ptr, V_ptr, schedule, f = NULL, show_pro
 }
 
 move_schedule_local <- function(r1, v1, r2, v2, schedule, f = NULL) {
-    invisible(.Call(`_dart_move_schedule_local`, r1, v1, r2, v2, schedule, f))
+    .Call(`_dart_move_schedule_local`, r1, v1, r2, v2, schedule, f)
 }
 
 reduce_arma <- function(D, v, show_progress = TRUE) {
@@ -166,5 +166,9 @@ relative_transpositions <- function(n, T) {
 
 bentley_ottmann <- function(S) {
     .Call(`_dart_bentley_ottmann`, S)
+}
+
+sparse_complex <- function(st_ptr, st_out, lambda, alpha, epsilon) {
+    .Call(`_dart_sparse_complex`, st_ptr, st_out, lambda, alpha, epsilon)
 }
 

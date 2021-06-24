@@ -30,7 +30,7 @@ sample_filtration <- function(S){
 r_rips_complex <- function(n, radius, coords = FALSE, ...){
 	xy <- cbind(runif(n), runif(n))
 	d <- parallelDist::parallelDist(xy, method = "euclidean")
-	R <- rips(d, eps = 2*radius, ...)
+	R <- simplextree::rips(d, eps = 2*radius, ...)
 	if (coords){ attr(R, "coords") <- xy }
 	return(R)
 }

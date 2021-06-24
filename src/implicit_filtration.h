@@ -43,7 +43,7 @@ struct ImplicitFiltration {
 	enum class elem_t { RANK, GRADE, SIMPLEX, ALL };
 	
 	template< typename Iter >
-	ImplicitFiltration(SimplexTree& st, Iter w_begin, const Iter w_end) 
+	ImplicitFiltration(SimplexTree& st, Iter w_begin, const Iter w_end, int f_type) 
 		: m(std::accumulate(st.n_simplexes.begin(), st.n_simplexes.end(), 0)),
     	n(st.n_simplexes.at(0)),
     	d(st.dimension()+1),
@@ -55,11 +55,11 @@ struct ImplicitFiltration {
 		// TODO: check choose(m, d) < 2^64 - 1 for encoding 
 		
 		// Check the type of filtration to construct
-		if (grades.size() == n){
+		if (grades.size() == n && f_type == 0){
 			type = filt_t::LOWER_STAR; 
-		} else if (grades.size() == st.n_simplexes.at(1)){
+		} else if (grades.size() == st.n_simplexes.at(1) && f_type == 1){
 			type = filt_t::FLAG; 
-		} else if (grades.size() == m){
+		} else if (grades.size() == m && f_type == 2){
 			type = filt_t::GENERIC; 
 		} else {
 			// Rprintf("Weights size: %d, n: %d, m: %d\n", grades.size(), n, m);

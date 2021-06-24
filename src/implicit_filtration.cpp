@@ -9,8 +9,8 @@ SEXP as_XPtr(ImplicitFiltration* fi){
 }
 
 // Rcpp constructor
-ImplicitFiltration* IF_constructor(SEXP stree, NumericVector weights){
-	auto fi = new ImplicitFiltration(*Rcpp::XPtr< SimplexTree >(stree),  weights.begin(), weights.end());
+ImplicitFiltration* IF_constructor(SEXP stree, NumericVector weights, int type){
+	auto fi = new ImplicitFiltration(*Rcpp::XPtr< SimplexTree >(stree),  weights.begin(), weights.end(), type);
 	return(fi);
 }
 
@@ -65,11 +65,24 @@ vector< size_t > boundary(ImplicitFiltration* fi, const size_t i){
 	return(indices);
 }
 
+std::string filtration_type(ImplicitFiltration* fi){
+	using filt_t = ImplicitFiltration::filt_t;
+	switch(fi->type){
+		case filt_t::LOWER_STAR:
+			return("Lower star");
+		case filt_t::FLAG:
+			return("Flag");
+		case filt_t::GENERIC:
+			return("Generic");
+	}
+}
+
 RCPP_MODULE(implicit_filtration_module) {
   using namespace Rcpp;
   Rcpp::class_< ImplicitFiltration >("ImplicitFiltration")
   	.factory(IF_constructor)
     .method( "as_XPtr", &as_XPtr)
+    .property("type", &filtration_type, "Returns the filtration type.")
     .field_readonly("size", &ImplicitFiltration::m)
     .field_readonly("num_simplices", &ImplicitFiltration::m)
     .field_readonly("num_vertices", &ImplicitFiltration::n)

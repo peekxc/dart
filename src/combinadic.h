@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <array>
 #include <span>
+#include <cmath>	 // round, sqrt
+#include <numeric> // midpoint, accumulate
 
 namespace dart {
 	using I = uint_fast64_t;
@@ -65,7 +67,7 @@ namespace dart {
 	
 	// All inclusive range binary search 
 	// Compare must return -1 for <(key, index), 0 for ==(key, index), and 1 for >(key, index)
-	// Guarenteed to return an index in [0, n-1] representing the lower_bound
+	// Guaranteed to return an index in [0, n-1] representing the lower_bound
 	template< typename T, typename Compare > [[nodiscard]]
 	int binary_search(const T key, size_t n, Compare p) {
 	  int low = 0, high = n - 1, best = 0; 
@@ -313,7 +315,7 @@ void apply_reverse_permutation(Iter1 first, Iter1 last, Iter2 indices) {
 
 // Creates and returns the inverse permutation of p 
 template< typename Iter >
-auto inverse_permutation(Iter b, const Iter e) -> std::vector< size_t > {
+std::vector< size_t > inverse_permutation(Iter b, const Iter e) {
 	auto a = std::vector< size_t >(b, e);
 	inverse_permutation_n(a.begin(), a.size());
 	return(a);

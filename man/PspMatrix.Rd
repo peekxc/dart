@@ -61,7 +61,7 @@ PspMatrix
 \if{latex}{\out{\hypertarget{method-as.Matrix}{}}}
 \subsection{Method \code{as.Matrix()}}{
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{PspMatrix$as.Matrix(type = "CSC")}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{PspMatrix$as.Matrix(type = "CSC", clean = TRUE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{

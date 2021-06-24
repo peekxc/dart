@@ -4,7 +4,7 @@ Filtration <- R6::R6Class(
   "Filtration",
   public = list(
   	complex = NULL, 
-    initialize = function(simplices, grades = NULL, persistent=TRUE) {
+    initialize = function(simplices, grades = NULL, type = "infer", persistent=TRUE) {
     	stopifnot(is.list(simplices) || inherits(simplices, "Rcpp_SimplexTree"))
     	## Choose what to do based on the input
     	if (is.list(simplices)){
@@ -25,8 +25,13 @@ Filtration <- R6::R6Class(
     		if (missing(grades) || is.null(grades)){ grades <- seq_len(sum(self$complex$n_simplices)) }
     		stopifnot(is.numeric(grades), length(grades) %in% c(head(self$complex$n_simplices, 2), sum(self$complex$n_simplices)))
     	}
+    	if (missing(type) || type == "infer"){
+    		sc <- c(head(self$complex$n_simplices, 2), sum(self$complex$n_simplices))
+    		type <- match(length(grades), sc)
+    		stopifnot(type %in% 1:3)
+    	}
     	private$.is_persistent <- as.logical(persistent)
-      private$.filtration <- new(dart:::ImplicitFiltration, self$complex$as_XPtr(), grades)
+      private$.filtration <- new(dart:::ImplicitFiltration, self$complex$as_XPtr(), grades, type-1L)
     }, 
     finalize = function() {
 			# 	    print("finalizing filtration")
@@ -44,7 +49,15 @@ Filtration <- R6::R6Class(
 )
 
 Filtration$set("public", "print", function(...){
-	print("Filtration")
+	max_k <- length(self$complex$n_simplices)
+  if (max_k == 0){ cat("< empty filtration >\n"); return(invisible(self)) }
+	header <- sprintf("Filtration with (%s) (%s)-simplices", paste0(self$complex$n_simplices, collapse = ", "), paste0(0L:(max_k-1L), collapse = ", "))
+	m <- sum(self$complex$n_simplices)
+	s1 <- simplex_to_str(self$at(1)$simplex)
+	s2 <- simplex_to_str(self$at(2)$simplex)
+	sm <- simplex_to_str(self$at(m)$simplex)
+	footer <- sprintf("%s -> %s -> ... -> %s", s1, s2, sm)
+	writeLines(c(header, footer))
 	invisible(self)
 })
 
@@ -61,6 +74,14 @@ Filtration$set("active", "simplices", function(value){
 		stop("Filtrations are read-only once created.", call. = FALSE)
 	}
 	invisible(self)
+})
+
+Filtration$set("active", "type", function(value){
+	if (missing(value)){
+		return(private$.filtration$type)
+	} else {
+		stop("Filtrations are read-only once created.", call. = FALSE)
+	}
 })
 
 Filtration$set("active", "grading", function(value){
@@ -135,8 +156,9 @@ Filtration$set("active", "quads", function(value){
 #' Filtered simplicial complex
 #' @description Creates a filtered simplicial complex.
 #' @param simplices list of simplices in filtration order, or a simplex tree. 
-#' @param grades numeric vector of grades of 'weights' of simplices, in filtration order 
-#' if \code{simplices} is a list or shortlex order is a simplex tree. 
+#' @param grades numeric vector of grades or 'weights' of vertices, edges, or simplices. If \code{simplices}
+#' is a list, \code{grades} is expected to be in filtration order, otherwise in shortlex order if \code{simplices} 
+#' is a simplex tree. 
 #' @details This function creates a (simplicial) filtration, i.e. a simplicial complex filtered 
 #' according to some choice of grading function which induces a partial order on the simplices of the complex. 
 #' Given \code{simplices} and a (possibly much smaller) vector of \code{grades} or 'weights', this function 
@@ -168,14 +190,15 @@ Filtration$set("active", "quads", function(value){
 #' \cr
 #' @return a \code{Filtration} \link[R6]{R6} object. 
 #' @export
-filtration <- function(simplices, grades = NULL, persistent = TRUE){
-	return(Filtration$new(simplices, grades, persistent))
+filtration <- function(simplices, grades = NULL, type = "infer", persistent = TRUE){
+	return(Filtration$new(simplices, grades, type, persistent))
 }
 
 #' Rips filtration
 #' @param x either a row-oriented point cloud or a \link[stats]{dist} object.
 #' @param diameter diameter of balls to place at every point. Defaults to the 2 * < enclosing radius of \code{x} >.
 #' @param dim maximum dimension to expand the rips complex to do. Defaults to 1, producing the neighborhood graph of \code{x}. 
+#' @importFrom magrittr "%>%"
 #' @export
 rips_filtration <- function(x, diameter = "default", dim = 1L, ...){
 	if (inherits(x, "dist")){
@@ -194,7 +217,7 @@ rips_filtration <- function(x, diameter = "default", dim = 1L, ...){
 			simplextree::insert(as.list(seq(n))) %>% 
 			simplextree::insert(edges) %>% 
 			simplextree::expand(k = dim)
-	return(filtration(simplices = st, grades = d[ind_to_insert], ...))
+	return(filtration(simplices = st, grades = d[ind_to_insert], type = 2L, ...))
 }
 
 

@@ -7,7 +7,7 @@ output: html_notebook
 # X_50k <- R.matlab::readMat("~/Downloads/n50000Dct.mat")
 x_15_30 <- R.matlab::readMat("~/Downloads/nk15c30Dct.mat")$nk15c30Dct
 # X <- X_50k$n50000Dct
-X <- x_15_30$nk15c30Dct
+X <- x_15_30
 
 D <- do.call(rbind, list(
 	c(2 ,-1, 0,-1, 0, 0, 0, 0, 0), 
@@ -82,7 +82,7 @@ for (idx in lm_idx){
 # 	if (length(idx) == 0){ return(NULL) }
 # 	idx[landmark::landmarks_maxmin(X[idx,,drop=FALSE], num = min(c(length(idx), ns[i])))]
 # })
-plot(X[unlist(strata),1:2])
+# plot(X[unlist(strata),1:2])
 
 
 	# density_levels <- seq(min(f), max(f), length.out = n.strata)
@@ -124,12 +124,6 @@ library("dart")
 X <- R.matlab::readMat("~/Downloads/n50000Dct.mat")$n50000Dct
 # X <- R.matlab::readMat("~/Downloads/nk15c30Dct.mat")$nk15c30Dct
 
-## Parameters
-n <- 500 
-max_diam <- 0.8
-xbin <- 8L
-ybin <- 8L
-
 ## Density estimate
 k <- 300L
 Vd <- function(d){ (pi^(d/2))/(gamma(d/2.0 + 1)) }
@@ -138,17 +132,35 @@ knn_density <- local({
 	(k/nrow(X))*(1/(Vd(ncol(X))*x_knn$nn.dists[,k]))
 })
 
+## Parameters
+n <- 500 
+max_diam <- 1.2
+xbin <- 8L
+ybin <- 8L
+
 ## Stratified maxmin sampling of X
-sample_idx <- stratified_sample(X, m = n, f = knn_density)
+sample_idx <- stratified_sample(X, m = n, f = knn_density, n.strata = 25)
 x <- X[sample_idx,,drop=FALSE]
 f <- normalize(max(knn_density[sample_idx]) - knn_density[sample_idx])
-# f <- normalize(knn_density[sample_idx])
 plot(x, pch = 20, col = bin_col(x = f, col_pal = rainbow(100, start = 0, end = 4/6)))
 # sample_idx <- sample(1:nrow(X), size = 500)
+dx <- geodesic_dist(x, k = 15L)
+
 
 ## Get line arrangement + dual graph 
-ro <- bigraded_betti(x = x, f = f, H = 1L, xbin = xbin, ybin = ybin, max_dist = max_diam, 
-										 save.path = "~/pc_f.txt")
+# ro <- bigraded_betti(x = x, f = f, H = 1L, xbin = xbin, ybin = ybin, max_dist = max_diam, 
+# 										 save.path = "~/pc_f.txt")
+sr <- sparse_rips(dx, alpha = max_diam)
+S <- sparsify_rips(sr$graph, p = sr$permutation, w = sr$radii, epsilon = 0.1, 
+									 alpha = sr$alpha, filtered = TRUE, dim = 2)
+# S <- sparse_rips_filtration(x, epsilon = 0.1, dim = 2L)
+
+s <- S$simplices
+f1 <- S$grading
+f2 <- sapply(s, function(simplex){ max(knn_density[sample_idx[simplex]]) })
+f1 <- normalize(f1)
+f2 <- normalize(f2)
+ro <- bigraded_betti2(x = s, f1 = f1, f2 = f2, H = 1L, xbin = xbin, ybin = ybin, save.path = "~/pc_f.txt")
 
 
 LA <- dual_line_arrangement(x = ro)
@@ -158,7 +170,7 @@ LA <- sf::st_geometrycollection(LA[!singularities])
 dg <- dual_graph(LA)
 centroids <- do.call(rbind, lapply(LA, sf::st_centroid))
 
-plot(LA, col = "lightgray")
+plot(LA, col = "lightgray", asp = 1)
 for (i in 1:nrow(dg)){ 
 	segments(x0 = centroids[dg[i,1],1], y0 = centroids[dg[i,1],2], 
 					 x1 = centroids[dg[i,2],1], y1 = centroids[dg[i,2],2], 

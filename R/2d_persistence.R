@@ -160,6 +160,60 @@ bigraded_betti <- function(x, f, H=1L, xbin=10L, ybin=10L, max_dist=NULL, rivet_
 	}
 }
 
+#' Bigraded_betti2
+#' @param x list of simplices in filtration order 
+#' @param f1 first filter function 
+#' @param f2 second filter function
+#' @export
+bigraded_betti2 <- function(x, f1, f2, H=1L, xbin=10L, ybin=10L, rivet_path="~/rivet",
+													 save.path=NULL, xreverse=FALSE, yreverse=FALSE){
+	
+	# L <- sparse_rips(x)
+	# R <- sparsify_rips(x=L$graph, p=L$permutation, w=L$radii, epsilon=0.1, alpha=L$alpha, dim=2, filtered=TRUE)
+	# 
+	stopifnot(is.numeric(f1), is.numeric(f2), is.list(x), length(f1) == length(x), length(f2) == length(x))
+	rivet_input <- list()
+	rivet_input <- append(rivet_input, "--datatype bifiltration")
+	
+	bifiltration <- lapply(seq_along(s), function(i){
+		sprintf("%s ; %g %g", paste0(as.character(s[[i]]), collapse = " "), f1[i], f2[i])
+	})
+	rivet_input <- c(rivet_input, bifiltration)
+	# rivet_input <- append(rivet_input, paste0(as.character(f), collapse = ","))
+	# pts <- apply(x, 1, function(x) paste0(as.character(x), collapse = ","))
+	# rivet_input <- append(rivet_input, pts)
+	
+	if (!missing(save.path) && is.character(save.path)){
+		rivet_input_fn <- file.path(save.path)
+	} else {
+		rivet_input_fn <- file.path(tempfile())
+		on.exit(unlink(rivet_input_fn), add = TRUE)
+	}
+	writeLines(unlist(rivet_input), con = rivet_input_fn)
+	
+	rivet_opts <- sprintf("-H %d --xbins %d --ybins %d", H, xbin, ybin)
+	if (xreverse){ rivet_opts <- paste(rivet_opts, "--xreverse") }
+	if (yreverse){ rivet_opts <- paste(rivet_opts, "--yreverse") }
+	rivet_opts <- paste(rivet_opts, "--betti")
+	rivet_dir <- normalizePath(rivet_path)
+	rivet_output_fn <- file.path(tempfile())
+	on.exit(unlink(rivet_output_fn), add = TRUE)
+	# if (file.exists(rivet_output_fn)){ file.remove(rivet_output_fn)	}
+	rivet_cmd <- paste(file.path(rivet_dir, "rivet_console"), rivet_input_fn, rivet_opts, ">", rivet_output_fn)
+	message(rivet_cmd)
+	rivet_out <- system(rivet_cmd)
+
+	if (rivet_out == 0){
+		out <- read_betti(rivet_output_fn)
+		return(out)
+	} else {
+		stop("RIVET failed to execute properly. Check inputs.")
+	}
+}
+
+
+
+
 # Reads in the Betti number file produced by RIVET 
 # x := file location 
 # value := whether to return grades associated with the betti number of the original (raw) indices 

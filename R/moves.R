@@ -1,3 +1,28 @@
+## ---- Main interface -----
+permute_decomp <- function(){
+	
+}
+
+#' Simulate Dynamic Persistent Homology 
+#' @description Simulates persistent homology (PH) in dynamic settings
+#' @param f function that takes no arguments and yields a filtration on invocation.
+#' @param FUN optional function to inspect persistence-related information for each filtration. See details. 
+#' @details This function enables the efficient computation of persistence over dynamic or time-varying settings.
+#' Given a nullary function which returns a filtration upon each invocation, this function computes the 
+#' persistent homology of each filtration in sequence, applying the user-supplied \code{FUN} to the resulting 
+#' persistence diagram. The user may specify the type interpolation process to use between adjacent filtrations. 
+#' Thus, conceptually this acts as an alternative to collecting all of the filtrations into a list \code{L} and executing 
+#' \code{lapply(L, function(filtration){ FUN(compute_ph(filtration)) }) }. \cr
+#' \cr     
+#' Unlike the simplistic \code{lapply} strategy discussed above, this function requires at most 2 filtrations be 
+#' in memory at any given time. Moreover, when adjacent persistence diagrams are relatively "close", it can be more efficient 
+#' to update the underlying R=DV decomposition over time instead of simply recomputing the decomposition independently for 
+#' each filtration. Optionally, the user may also simulate persistence at intermediate or "interpolated" points as well---the 
+#' so-called vineyards approach. 
+simulate_dyph <- function(f, FUN = NULL){
+	
+}
+
 
 ## ---- Helper functions -----
 ## Helper function to return the lowest non-zero entry in a vector, or 0 otherwise
@@ -165,7 +190,8 @@ move_left <- function(R, V, i, j, dims = "all"){
 		k <- which(low_J == i)
 		if (length(k) != 0){
 			k_low <- (j-1) + low_entry(R2[seq(j, i-1L),k])
-			J <- sort(c(k, which(low_J <= k_low)))
+			J <- sort(c(k, which(low_J <= k_low))) ## can we do better?
+			print(J)
 			R2 <- permute_move(R2, i = i, j = j, dims = "rows") 
 			res2 <- restore_left(R = R2, V = V2, J = J)
 		} else {

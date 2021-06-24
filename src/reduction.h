@@ -11,6 +11,7 @@ using std::size_t;
 using std::optional;
 using std::tuple;
 using std::make_tuple;
+using std::vector; 
 
 #include "reduction_concepts.h"
 #include "combinadic.h"
@@ -48,45 +49,36 @@ void pHcol_local(Matrix& R1, Matrix& V1, Matrix& R2, Matrix& V2, Iter b1, const 
 }
 
 
+// https://www.albany.edu/~ML644186/AMAT_840_Spring_2019/Math840_Notes.pdf
 template< ReducibleMatrix Matrix, typename Iter, typename Lambda >
 void pHcol(Matrix& R, Matrix& V, Iter b, const Iter e, Lambda f){
 	using field_t = typename Matrix::value_type;
 	using entry_t = typename std::pair< size_t, field_t >;
 	
+	// Given row index r, pivs[r] yields the column with low row index r
+	auto pivs = vector< optional< entry_t > >(R.dim().first); // See reference above 
+	
 	// Reduction algorithm
 	for (size_t j; b != e; ++b){
 		j = *b; 
-		// Rcout << "Reducing " << j << std::endl; 
-		optional< entry_t > low_i, low_j;
-		while((low_j = R.low(j)) && (low_i = R.find_low(j, low_j->first))){
+		optional< entry_t > piv_i = std::nullopt; // (col index, row value)
+		optional< entry_t > low_j = std::nullopt; // (row index, row value)
+		while((low_j = R.low(j)) && (piv_i = pivs[low_j->first])){
 			// Rprintf("quotienting(%d/%d): %.2g / %.2g\n", low_j->first, low_i->first, low_j->second, low_i->second);
-			size_t i = low_i->first;
-			auto lambda = low_j->second / low_i->second;
-			// Rcout << "i = " << i << ", j = " << j << ", lambda = " << lambda << std::endl; 
-			// Rcout << "pivot_i = " << low_i->second << ", pivot_j = " << low_j->second << std::endl; 
-			// Rcout << "low_j = " << low_j->first << std::endl; 
-			// R.add_scaled_col(i, j, j, -lambda);
+			const size_t i = piv_i->first; // column i of R must have low row index low_j->frist 
+			const auto lambda = low_j->second / piv_i->second;
+			// Rprintf("Adding %d -> %d\n", i, j);
 			V.add_scaled_col(i, j, j, -lambda);
 			R.cancel_lowest(j, i);
 			++reduction_stats[0]; // Keep track of column operations
-			// auto actual_low_i = R.low(i);
-			// if (actual_low_i){
-			// 	Rcout << "i has low entry: " << actual_low_i->first << std::endl;  
-			// } else {
-			// 	Rcout << "i has no low entry" << std::endl;  
-			// }
-			// R.add_cols(i,j,j);
-			// V.add_cols(i,j,j);
-			// auto new_low_j = R.low(j);
-			// if (new_low_j && new_low_j->first == low_j->first){
-			// 	Rcout << low_j->first << ":" << low_j->second << " -> " << new_low_j->first << " : " << new_low_j->second << std::endl; 
-			// 	throw std::invalid_argument("Reduction failed.");
-			// }
-			// R.add_scaled_col(i, j, j, -lambda);
-			// V.add_scaled_col(i, j, j, -lambda);
-			// break;
 		}
 		f();
+    
+    // Store pivot entry s.t. pivs[r] yields the column with low row index r
+    if (low_j){
+    	// Rprintf("storing pivot row %d = col %d\n", low_j->first, j);
+    	pivs[low_j->first] = make_optional(make_pair(j, low_j->second));
+    }
 	}
 	return; 
 }
