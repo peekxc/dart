@@ -33,7 +33,7 @@ PspMatrix <- R6::R6Class("PspMatrix", list(
   print = function(){
   	if (self$matrix$nnz == 0){ cat(sprintf("< empty %d x %d PSP matrix >\n", self$matrix$n_rows, self$matrix$n_cols)) }
 	  else {
-	    cat(sprintf("%d x %d Permutable Sparse Matrix with %d non-zero entries", self$matrix$n_rows, self$matrix$n_cols, self$matrix$nnz))
+	    cat(sprintf("%d x %d Permutable Sparse Matrix with %d non-zero entries\n", self$matrix$n_rows, self$matrix$n_cols, self$matrix$nnz))
 	  	if (self$matrix$n_rows <= 150 && self$matrix$n_cols <= 150){
 	  		show(self$as.Matrix())
 	  	}
@@ -66,6 +66,22 @@ PspMatrix$set("public", "as.Matrix", function(type="CSC", clean=TRUE) {
 	return(x$matrix$submatrix(min(i)-1L, max(i)-1L, min(j)-1L, max(j)-1L))
 }
 
+#' @method dimnames PspMatrix
+#' @export
+dimnames.PspMatrix <- function(x){
+	# if (!missing(value)){ print("tesdting") }
+	return(attr(x, "Dimnames"))	
+}
+
+#' @method "dimnames<-" PspMatrix
+#' @export
+`dimnames<-.PspMatrix` <- function(x, value){
+	if (!is.list(value) || length(value) != 2L) { stop("invalid 'dimnames' given for PspMatrix") }
+	attr(x, "Dimnames") <- value 
+	invisible(x)
+}
+
+
 
 #' psp_matrix 
 #' @description User friendly constructed of a Permutable SParse matrix (psp_matrix). \cr
@@ -91,6 +107,14 @@ methods::setAs(from = "PspMatrix", to = "dtCMatrix", def = function(from){
 	return(tri)
 })
 
+
+#' @method dim PspMatrix
+#' @export
+dim.PspMatrix <- function(x, ...){
+	return(c(x$matrix$n_rows, x$matrix$n_cols))
+}
+
+
 # coerce.PspMatrix <- function(from, to){
 # 	
 # }
@@ -104,8 +128,3 @@ methods::setAs(from = "PspMatrix", to = "dtCMatrix", def = function(from){
 #     cat(sprintf("%d x %d Permutable Sparse Matrix with %d non-zero entries", object$n_rows, object$n_cols, object$nnz))
 #   }
 # })
-
-
-format.Rcpp_PspBoolMatrix <- function(x, ...){
-	print("hello world")
-}

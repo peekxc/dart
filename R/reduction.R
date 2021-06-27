@@ -24,38 +24,58 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 	use_clearing <- options[["clearing"]]
 	if ("fbm" %in% class(D)){
 		if (is.list(D$matrix)){
-			D1_psp <- dart::psp_matrix(x = D$matrix[[1]])
-			V1_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix[[1]])))
-			D2_psp <- dart::psp_matrix(x = D$matrix[[2]])
-			V2_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix[[2]])))
+			k <- length(D$matrix)
+			stopifnot(k >= 2)
+			R_psp <- lapply(seq(k), function(i){ dart::psp_matrix(x = D$matrix[[i]]) })
+			V_psp <- lapply(seq(k), function(i){ dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix[[i]]))) })
 			
 			## Perform the reductions on each of the matrices
-			nc <- reduce_local_pspbool(
-				D1_ptr = D1_psp$matrix$as_XPtr(), V1_ptr = V1_psp$matrix$as_XPtr(), 
-				D2_ptr = D2_psp$matrix$as_XPtr(), V2_ptr = V2_psp$matrix$as_XPtr(), 
-				clearing = use_clearing, show_progress = show_progress
-			)
-			
-			## Clean entries up 
-			D1_psp$matrix$clean(0)
-			D2_psp$matrix$clean(0)
-			V1_psp$matrix$clean(0)
-			V2_psp$matrix$clean(0)
-			
-			if (missing(output) || output == "RV"){
-				res <- list(R=list(D1_psp, D2_psp), V=list(V1_psp, V2_psp))
-			} else if (out == "RU" || "U"){
-				U1 <- coerce_field(solve(as(V1_psp, "sparseMatrix")))
-				U2 <- coerce_field(solve(as(V2_psp, "sparseMatrix")))
-				res <- ifelse(out == "RU", 
-							 list(R=list(D1_psp, D2_psp), U=list(psp_matrix(x=U1), psp_matrix(x=U2))), 
-							 list(U=list(psp_matrix(x=U1), psp_matrix(x=U2))))
-			} else if (out == "R"){
-				res <- list(R=list(D1_psp, D2_psp))
-			} else if (out == "V"){
-				res <- list(V=list(V1_psp, V2_psp))
+			nc <- 0L
+			for (j in seq(k, 2L)){
+				i <- j - 1L
+				nc <- nc + reduce_local_pspbool(
+					D1_ptr = R_psp[[i]]$matrix$as_XPtr(), V1_ptr = V_psp[[i]]$matrix$as_XPtr(), 
+					D2_ptr = R_psp[[j]]$matrix$as_XPtr(), V2_ptr = V_psp[[j]]$matrix$as_XPtr(), 
+					clearing = use_clearing, show_progress = show_progress
+				)
 			}
-			res$nc <- nc
+			res <- list(R = R_psp, V = V_psp, nc = nc)
+			# D1_psp <- dart::psp_matrix(x = D$matrix[[1]])
+			# V1_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix[[1]])))
+			# D2_psp <- dart::psp_matrix(x = D$matrix[[2]])
+			# V2_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix[[2]])))
+			# 
+			# 
+			# 
+			# 
+			# 
+			# ## Perform the reductions on each of the matrices
+			# nc <- reduce_local_pspbool(
+			# 	D1_ptr = D1_psp$matrix$as_XPtr(), V1_ptr = V1_psp$matrix$as_XPtr(), 
+			# 	D2_ptr = D2_psp$matrix$as_XPtr(), V2_ptr = V2_psp$matrix$as_XPtr(), 
+			# 	clearing = use_clearing, show_progress = show_progress
+			# )
+			# 
+			# ## Clean entries up 
+			# D1_psp$matrix$clean(0)
+			# D2_psp$matrix$clean(0)
+			# V1_psp$matrix$clean(0)
+			# V2_psp$matrix$clean(0)
+			
+			# if (missing(output) || output == "RV"){
+			# 	res <- list(R=list(D1_psp, D2_psp), V=list(V1_psp, V2_psp))
+			# } else if (out == "RU" || "U"){
+			# 	U1 <- coerce_field(solve(as(V1_psp, "sparseMatrix")))
+			# 	U2 <- coerce_field(solve(as(V2_psp, "sparseMatrix")))
+			# 	res <- ifelse(out == "RU", 
+			# 				 list(R=list(D1_psp, D2_psp), U=list(psp_matrix(x=U1), psp_matrix(x=U2))), 
+			# 				 list(U=list(psp_matrix(x=U1), psp_matrix(x=U2))))
+			# } else if (out == "R"){
+			# 	res <- list(R=list(D1_psp, D2_psp))
+			# } else if (out == "V"){
+			# 	res <- list(V=list(V1_psp, V2_psp))
+			# }
+			# res$nc <- nc
 		} else {
 			stopifnot(!is.null(dim(D$matrix)))
 			
@@ -108,11 +128,27 @@ reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V",
 			}
 		}
 	}
+	attr(res, "hom_dim") <- attr(D, "hom_dim")
 	# output_type <- match(output, c("RV", "RU", "R", "V", "U"))
 	return(res)
 }
 
+#' @method print fbm_decomp
+#' @export print.fbm_decomp 
+#' @export
 print.fbm_decomp <- function(x, ...){
+	stopifnot("fbm_decomp" %in% class(x))
+	# if (is.list(x$matrix)){
+	# 	num_bm <- length(x$matrix)
+	# 	bm_str <- do.call(sprintf, append(list(paste(rep("D%d", num_bm), collapse = ", ")), attr(x, "hom_dim")))
+	# 	bm_str <- paste0(bm_str, sprintf("-filtration boundary %s", ifelse(num_bm == 1, "matrix", "matrices")))
+	# 	sz_str <- paste(sapply(x$matrix, function(bm) do.call(sprintf, append(list("%d x %d"), dim(bm)))), collapse = ", ")
+	# 	sz_str <- paste(ifelse(num_bm == 1, "Size:", "Sizes:"), sz_str)
+	# } else {
+	# 	bm_str <- sprintf("Filtration boundary matrix (dim=%s)", paste0(as.character(attr(x, "hom_dim")), collapse = ","))
+	# 	sz_str <- sprintf("Size: %d x %d", nrow(x$matrix), ncol(x$matrix))
+	# }
+	# writeLines(c(bm_str, sz_str))
 	cat("R = DV Decomposition")
 }
 
@@ -125,6 +161,7 @@ is_reduced <- function(x){
 	is_reduced <- !as.logical(anyDuplicated(pivots[pivots != 0]))
 	return(is_reduced)
 }
+
 
 #' Pivot entries 
 #' @description Returns the pivot entries in a matrix.
@@ -207,14 +244,31 @@ validate_decomp <- function(x, D = NULL, field = c("mod2", "reals")){
 	return(c(reduced=is_red, triangular=is_upt, decomposition=is_dec))
 }
 
-#' ph
+#' Persistent homology computation 
+#' @description This function offers a generic persistent homology computation using the reduction algorithm. 
+#' While certain optimizations are available (see \link{reduce}), this implementation is not guaranteed to be 
+#' necessarily efficient for all filtrations, though it is relatively efficient. One can specify whether to 
+#' compute the persistence of multiple dimensions simultaneously or alternatively specific dimensions of homology 
+#' can be chosen by setting \code{dim} accordingly. 
 #' @param x point cloud matrix, 'dist' object, or Filtration.
 #' @export
-ph <- function(x, type = c("rips", "cech", "delaunay"), dim = 0:2){
-	fi <- dart::rips_filtration(x, dim = max(dim))
-	D <- dart::boundary_matrix(fi, dims = dim)
-	rv <- reduce(D)
-	
+ph <- function(x, dims = c(0L, 1L), type = c("rips", "cech", "delaunay")){
+	contiguous <- all(dims == seq(0, max(dims)))
+	if (contiguous){
+		fi <- dart::rips_filtration(x, dim = max(dims)+1L)
+		D <- dart::boundary_matrix(fi, dims = "all")
+		rv <- dart::reduce(D, validate = FALSE)
+		colnames(rv$R) <- simplex_to_str(fi$simplices)
+		bc <- dart::read_barcodes(rv, essential = FALSE, dims = dims, values = fi$grading, collapse = TRUE)
+	} else {
+		fi <- dart::rips_filtration(x, dim = max(dims)+1L)
+		D <- dart::boundary_matrix(fi, dims = c(dims, max(dims)+1L))
+		rv <- dart::reduce(D, validate = FALSE)
+		values <- lapply(attr(D, "hom_dim"), function(di){ fi$k_grades(di) })
+		bc <- dart::read_barcodes(rv, essential = FALSE, dims = dims, values = values, collapse = TRUE)
+	}
+	return(bc)
+}
 	
 	
 	# for (n in 3:15){
@@ -228,12 +282,131 @@ ph <- function(x, type = c("rips", "cech", "delaunay"), dim = 0:2){
 	# 	}
 	# }
 
-	
-}
 
+
+#' Read bardcodes
+#' @param x a reduced boundary matrix with column labels, or the output object of \link{reduce}. See details. 
+#' @param dims the homology class dimensions to include in the output.
+#' @param values optional function values associated with the filtration. If excluded the index persistence is reported. See details.  
+#' @param collapse whether to remove persistent pairs that have 0 persistence. Defaults to true. 
+#' @param essential whether to keep essential classes which do not die. Defaults to false. 
+#' @description Extracts the persistence diagram from reduced matrices.
+#' @details Given a reduced boundary matrix \code{x}, this function extracts the persistent pairs
+#' representing points on the persistence diagram. If \code{x} is a matrix, it is expected to have simplices (as strings)
+#' in its \code{colnames} to extract dimension information, otherwise if \code{x} is a list encoding each reduction matrix 
+#' separately the dimension information is inferred from the supplied \code{dims}.
 #' @export 
-read_barcodes <- function(){
+read_barcodes <- function(x, dims = c(0L, 1L), values=NULL, collapse=TRUE, essential=FALSE){
+	.matrix_like <- function(m){ !is.null(dim(m)) }
+	stopifnot(inherits(x, "fbm_decomp") || .matrix_like(x))
+	stopifnot(is.vector(dims) && all(is.numeric(dims)))
 	
+	## If a decomposition was given but the elements are just matrices, 
+	## reduce to the full matrix case
+	if (inherits(x, "fbm_decomp")){
+		R <- x$R
+	} else {
+		R <- x
+	}
+	
+	## If values supplied, then check that: 
+	##	1) they are a numeric vectors matching the number columns of R, if R is a matrix, or
+	##	2) they are a list of vectors, each matching the number of columns of each submatrix R
+	if (!missing(values)){ 
+		if (.matrix_like(R)){
+			stopifnot(is.numeric(values) && length(values) == ncol(R)) 
+		} else {
+			stopifnot(is.list(values))
+			stopifnot(all(sapply(values, length) == sapply(R, ncol)))
+		}
+	}
+	
+	## If R is a matrix, treat it like the full reduced boundary matrix 
+	if (.matrix_like(R)){
+		{ nr <- nrow(R); nc <- ncol(R) }
+		s_dims <- sapply(str_to_simplex(colnames(R)), length) - 1L
+		P <- pivots(R)
+		
+		## The pivots define the non-essential persistence pairs
+		barcodes <- cbind(s_dims[P[,1]], P)
+		colnames(barcodes) <- c("dimension", "birth", "death")
+		
+		## If requested, record essential classes which never die 
+		if (essential){
+			E <- setdiff(seq.int(nc), as.vector(P))
+			barcodes <- rbind(barcodes, cbind(s_dims[E], E, Inf))
+		}
+		
+		## Fix order to the lexicographical 
+		barcodes <- barcodes[order(barcodes[,1], barcodes[,2], barcodes[,3]),]
+		
+		## If weights supplied, use report them
+		if (!missing(values) && !is.null(values)){
+			barcodes[,2] <- values[barcodes[,2]]
+			barcodes[barcodes[,3] != Inf, 3] <- values[barcodes[barcodes[,3] != Inf, 3]]	
+		}
+		
+		## If requested, remove 0-persistence pairs 
+		if (collapse){
+			persistence <- abs(barcodes[,2] - barcodes[,3])
+			barcodes <- barcodes[persistence > .Machine$double.eps,,drop=FALSE]
+		}
+	} else if (is.list(R) && inherits(x, "fbm_decomp")) {
+		s_dims <- attr(x, "hom_dim")
+		stopifnot(is.numeric(s_dims), length(s_dims) == length(R), length(R) >= 2L)
+		if (!missing(values)){ stopifnot(is.list(values), all(sapply(values, length) == sapply(R, ncol))) }
+		k <- length(R)
+		barcodes <- matrix(0.0, nrow = 0, ncol = 3, dimnames = list(NULL, c("dimension", "birth", "death")))
+		for (i in seq(1L, k)){
+			{ nr <- nrow(R[[i]]); nc <- ncol(R[[i]]) }
+			P <- pivots(R[[i]])
+			if (length(P) > 0){
+				barcodes <- rbind(barcodes, cbind(s_dims[i]-1L, P))
+			}
+			
+			## If requested, record essential classes which never die 
+			if (essential){
+				E <- setdiff(seq.int(nc), as.vector(P[,2]))
+				if (i < k){
+					E <- setdiff(E, pivots(R[[i+1]])[,1])
+				}
+				if (length(E) > 0){
+					barcodes <- rbind(barcodes, cbind(s_dims[i], E, Inf))
+				}
+			}
+		}
+		
+		## If weights supplied, use report them
+		if (!missing(values) && !is.null(values)){
+			for (di in s_dims){
+				di_intervals <- barcodes[,1] == di
+				birth_vals <- values[[match(di, s_dims)]]   
+				death_vals <- values[[match(di+1L, s_dims)]]
+				barcodes[di_intervals, 2] <- birth_vals[barcodes[di_intervals,2]]
+				if (!is.null(death_vals)){
+					non_essential <- di_intervals & barcodes[,3] != Inf
+					barcodes[non_essential, 3] <- death_vals[barcodes[non_essential,3]]
+				} else {
+					barcodes[di_intervals, 3] <- Inf
+				}
+			}
+		}
+		
+		## If requested, remove 0-persistence pairs 
+		if (collapse){
+			persistence <- abs(barcodes[,2] - barcodes[,3])
+			barcodes <- barcodes[persistence > .Machine$double.eps,,drop=FALSE]
+		}
+	} else {
+		stop("Invalid input to 'x'--must be matrix or decomposition.")
+	}
+	
+	## Fix order to the lexicographical 
+	barcodes <- barcodes[order(barcodes[,1], barcodes[,2], barcodes[,3]),,drop=FALSE]
+	
+	## Only grab the dimensions requested (todo: make this more efficient)
+	barcodes <- barcodes[barcodes[,1] %in% dims,,drop=FALSE]
+	return(barcodes)
 }
 
 # permute_decomp <- function(x, i, j){

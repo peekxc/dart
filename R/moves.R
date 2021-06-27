@@ -1,5 +1,8 @@
 ## ---- Main interface -----
-permute_decomp <- function(){
+
+
+permute_decomp <- function(x, method=c("moves", "vineyards", "naive")){
+	stopifnot(inherits(x, "fbm_decomp"))
 	
 }
 
@@ -12,7 +15,7 @@ permute_decomp <- function(){
 #' persistent homology of each filtration in sequence, applying the user-supplied \code{FUN} to the resulting 
 #' persistence diagram. The user may specify the type interpolation process to use between adjacent filtrations. 
 #' Thus, conceptually this acts as an alternative to collecting all of the filtrations into a list \code{L} and executing 
-#' \code{lapply(L, function(filtration){ FUN(compute_ph(filtration)) }) }. \cr
+#' \code{lapply(L, function(filtration){ FUN(ph(filtration)) }) }. \cr
 #' \cr     
 #' Unlike the simplistic \code{lapply} strategy discussed above, this function requires at most 2 filtrations be 
 #' in memory at any given time. Moreover, when adjacent persistence diagrams are relatively "close", it can be more efficient 

@@ -2,13 +2,17 @@
 % Please edit documentation in R/reduction.R
 \name{ph}
 \alias{ph}
-\title{ph}
+\title{Persistent homology computation}
 \usage{
-ph(x, type = c("rips", "cech", "delaunay"), dim = 0:2)
+ph(x, type = c("rips", "cech", "delaunay"), dims = 0:2)
 }
 \arguments{
 \item{x}{point cloud matrix, 'dist' object, or Filtration.}
 }
 \description{
-ph
+This function offers a generic persistent homology computation using the reduction algorithm. 
+While certain optimizations are available (see \link{reduce}), this implementation is not guaranteed to be 
+necessarily efficient for all filtrations, though it is relatively efficient. One can specify whether to 
+compute the persistence of multiple dimensions simultaneously or alternatively specific dimensions of homology 
+can be chosen by setting \code{dim} accordingly.
 }

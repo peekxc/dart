@@ -4,7 +4,7 @@
 \alias{filtration}
 \title{Filtered simplicial complex}
 \usage{
-filtration(simplices, grades = NULL, persistent = TRUE)
+filtration(simplices, grades = NULL, type = "infer", persistent = TRUE)
 }
 \arguments{
 \item{simplices}{list of simplices in filtration order, or a simplex tree.}

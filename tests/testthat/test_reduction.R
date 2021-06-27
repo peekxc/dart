@@ -278,3 +278,33 @@ RV <- dart::reduce(D)
 D_psp <- dart::psp_matrix(x = D$matrix)
 V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix)))
 dart:::reduce_pspbool(D_psp$matrix$as_XPtr(), V_psp$matrix$as_XPtr())
+
+
+
+ ## Test reading barcodes 
+# colnames(rv$R) <- simplex_to_str(fi$simplices)
+x <- replicate(3, runif(15))
+fi <- dart::rips_filtration(x, dim = 3)
+D <- dart::boundary_matrix(fi, dims = unique(fi$dimensions))
+rv <- dart::reduce(D, validate = FALSE)
+values <- lapply(unique(fi$dimensions), function(di){ fi$k_grades(di) })
+bc1 <- dart::read_barcodes(rv, essential = FALSE, dims = 0:1, values = values, collapse = TRUE)
+bc2 <- as.matrix(ripserr::vietoris_rips(x))
+bc2 <- bc2[order(bc2[,1], bc2[,2], bc2[,3]),]
+all(abs(bc1 - bc2) < .Machine$double.eps)
+
+
+sum(dist(x) <= 0.55)
+r1 <- simplextree::rips(dist(x), eps = 0.55, dim = 3, filtered = TRUE)
+r2 <- rips_filtration(x, diameter = 0.55, dim = 3)
+all(match(r1$simplices, r2$simplices) == seq(sum(r1$n_simplices)))
+
+include_simplex <- function(idx){ all(dx[rank_combn(combn(idx,2), nrow(x))] <= 0.55) }
+dx <- dist(x)
+sum(dx <= 0.55)
+sum(combn(nrow(x), 3, include_simplex))
+sum(combn(nrow(x), 4, include_simplex))
+
+sum(combn(nrow(x), 2, function(idx) max(dx[idx[1], idx[2]]) <= 0.55))
+sum(combn(nrow(x), 3, function(idx) max(dx[idx[1], idx[2]]) <= 0.55))
+sum(combn(nrow(x), 4, function(idx) max(dx[idx[1], idx[2]]) <= 0.55))

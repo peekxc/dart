@@ -157,7 +157,7 @@ print.fbm <- function(x, ...){
 		sz_str <- paste(ifelse(num_bm == 1, "Size:", "Sizes:"), sz_str)
 	} else {
 		bm_str <- sprintf("Filtration boundary matrix (dim=%s)", paste0(as.character(attr(x, "hom_dim")), collapse = ","))
-		sz_str <- sprintf("Size: %d, %d", nrow(x$matrix), ncol(x$matrix))
+		sz_str <- sprintf("Size: %d x %d", nrow(x$matrix), ncol(x$matrix))
 	}
 	writeLines(c(bm_str, sz_str))
 }
