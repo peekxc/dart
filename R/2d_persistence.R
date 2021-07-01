@@ -26,7 +26,7 @@ bipersistence <- function(x, f, H = 0L, xbin = 10, ybin = 10, max_dist = 1.0, ri
 dual_line_arrangement <- function(x){
 	## Calculate anchors 
 	S <- rbind(x$betti0[,1:2], x$betti1[,1:2])
-	A <- compute_anchors(S)
+	A <- dart:::compute_anchors(S)
 	if (any(A[,1] < 0)){ A[,1] <- -A[,1] }
 	
 	## Use anchors to get lines making line arrangement. 
@@ -47,12 +47,13 @@ dual_line_arrangement <- function(x){
 	} else {
 		L_pts <- matrix(0, nrow = 0, ncol = 2)
 	}
+	# L_pts <- unique(L_pts)
 
 	## Compute line arrangement
 	if (nrow(L_pts) == 0){
-		 LA <- polygonize_la(L, xlim = c(0, max(ro$x_grades)), ylim = max(ro$y_grades)*c(-1,1))
+		 LA <- dart:::polygonize_la(round(L, 10), xlim = c(0, max(x$x_grades)), ylim = max(x$y_grades)*c(-1,1))
 	} else {
-		 LA <- polygonize_la(L, xlim = c(0, max(L_pts[,1])), ylim = c(min(c(-A[,2], A[,2])), max(L_pts[,2])))
+		 LA <- dart:::polygonize_la(round(L, 10), xlim = c(0, max(L_pts[,1])), ylim = c(min(c(-A[,2], A[,2])), max(L_pts[,2])))
 	}
 	return(LA)
 }
@@ -175,8 +176,8 @@ bigraded_betti2 <- function(x, f1, f2, H=1L, xbin=10L, ybin=10L, rivet_path="~/r
 	rivet_input <- list()
 	rivet_input <- append(rivet_input, "--datatype bifiltration")
 	
-	bifiltration <- lapply(seq_along(s), function(i){
-		sprintf("%s ; %g %g", paste0(as.character(s[[i]]), collapse = " "), f1[i], f2[i])
+	bifiltration <- lapply(seq_along(x), function(i){
+		sprintf("%s ; %g %g", paste0(as.character(x[[i]]), collapse = " "), f1[i], f2[i])
 	})
 	rivet_input <- c(rivet_input, bifiltration)
 	# rivet_input <- append(rivet_input, paste0(as.character(f), collapse = ","))

@@ -6,18 +6,28 @@ Filtration <- R6::R6Class(
   	complex = NULL, 
     initialize = function(simplices, grades = NULL, type = "infer", persistent=TRUE) {
     	stopifnot(is.list(simplices) || inherits(simplices, "Rcpp_SimplexTree"))
+    	# browser()
     	## Choose what to do based on the input
     	if (is.list(simplices)){
-    		## If list, assume grades given in filtration order
+    		## If grading not ordered, first order them
+	    	stopifnot(is.numeric(grades), all(!is.na(grades)))
+	    	order_indices <- order(grades)
+	    	grades <- grades[order_indices]
+    		simplices <- lapply(simplices, as.integer)[order_indices]
+    		stopifnot(is.numeric(grades), all(order(grades) == seq_along(grades)))
     		self$complex <- simplextree::simplex_tree(simplices)
     		if (missing(grades) || is.null(grades)){ grades <- seq_len(sum(self$complex$n_simplices)) }
     		if (length(grades) == self$complex$n_simplices[1]){
-    			grades <- grades[match(simplices[sapply(simplices, length) == 1], self$complex$vertices)]
+    			vertices <- simplices[sapply(simplices, length) == 1]
+    			grades <- grades[match(self$complex$vertices, vertices)]
     		} else if (length(grades) == self$complex$n_simplices[2]){
-    			grades <- grades[match(simplices[sapply(simplices, length) == 2], as.list(k_simplices(self$complex, 1L)))]
+    			edges <- simplices[sapply(simplices, length) == 2]
+    			grades <- grades[match(ltraverse(k_simplices(self$complex, 1L), as.integer), edges)]
     		} else {
     			stopifnot(length(grades) == sum(self$complex$n_simplices))
-    			grades <- grades[match(simplices,as.list(level_order(self$complex)))]
+    			simplices_shortlex <- ltraverse(level_order(self$complex), as.integer)
+    			grades <- grades[match(simplices_shortlex, simplices)]
+    			stopifnot(all(!is.na(grades)))
     		}
     	} else {
     		## Assume grades given in shortlex order

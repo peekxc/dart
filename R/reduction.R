@@ -15,7 +15,7 @@
 reduce <- function(D, field=c("mod2", "reals"), output = c("RV", "RU", "R", "V", "U"), 
 									 indices = NULL,
 									 options = c(clearing=TRUE), 
-									 validate = TRUE, show_progress=FALSE) {
+									 validate = FALSE, show_progress=FALSE) {
 	if (missing(field) || field == "mod2"){
 		coerce_field <- function(x){ x %% 2L }
 	} else {
@@ -154,11 +154,8 @@ print.fbm_decomp <- function(x, ...){
 
 #' @export
 is_reduced <- function(x){
-	is_psp <- "PspMatrix" %in% class(x)
-	if (is_psp){ x <- as(x, "sparseMatrix") }
-	stopifnot(!is.null(dim(x)))
-	pivots <- apply(x, 2, dart:::low_entry)
-	is_reduced <- !as.logical(anyDuplicated(pivots[pivots != 0]))
+	P <- pivots(x)
+	is_reduced <- !as.logical(anyDuplicated(P[,1]))
 	return(is_reduced)
 }
 
@@ -170,10 +167,11 @@ is_reduced <- function(x){
 #' to each non-zero column of \code{x}, with optimizations used if \code{x} is a sparse matrix. 
 #' @export
 pivots <- function(x){
-	if ("PspMatrix" %in% class(x)){
-		ci <- seq(x$matrix$n_cols)
-		ri <- sapply(ci-1L, function(j){ x$matrix$low_entry(j)+1 })
-		return(cbind(row=ri[ri != 0], col=ci[ri != 0]))
+	if (inherits(x, "PspMatrix")){
+		return(t(x$matrix$pivots()+1L))
+		# ci <- seq(x$matrix$n_cols)
+		# ri <- sapply(ci-1L, function(j){ x$matrix$low_entry(j)+1 })
+		# return(cbind(row=ri[ri != 0], col=ci[ri != 0]))
 	} else if (as.logical(length(grep("*Matrix", class(x))))){
 		if (all(c("i", "p") %in% slotNames(x))){
 			cs <- diff(cumsum(x@p))

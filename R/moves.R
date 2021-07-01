@@ -45,11 +45,41 @@ restore_left <- function(R, V, J){
 			if (all(low_J[pair] == 0)){ break }
 			si <- J[pair[1]]
 			ti <- J[pair[2]]
-			R[,ti] <- (R[,ti] + R[,si]) %% 2
-			V[,ti] <- (V[,ti] + V[,si]) %% 2
+			R[,ti] <- xor(R[,ti], R[,si])
+			V[,ti] <- xor(V[,ti], V[,si])
 			low_J[pair[2]] <- low_entry(R[,ti])
 			pair <- sort(head(which(low_J == low_J[pair[2]]), 2L))
 			additions <- cbind(additions, c(si, ti))
+		}
+	}
+	return(list(R=R,V=V,I=additions))
+}
+
+restore_left2 <- function(R, V, J){
+	J <- sort(J)
+	additions <- matrix(integer(0L), nrow = 2L)
+	if (length(J) > 1){
+		low_J <- apply(R[,J], 2, dart:::low_entry)
+		filo <- rbind(row=low_J, col=J)
+		filo <- filo[,order(filo[1,], filo[2,])] # first row == row indices, second row == column indices
+		while(ncol(filo) > 1L){
+			lp <- filo[,ncol(filo)-1L]
+			rp <- filo[,ncol(filo)]
+			if (lp[1] != rp[1] || (lp[1] == 0L && rp[1] == 0L)){
+				filo <- filo[,-ncol(filo),drop=FALSE]
+			} else {
+				R[,rp[2]] <- xor(R[,lp[2]], R[,rp[2]])
+				V[,rp[2]] <- xor(V[,lp[2]], V[,rp[2]])
+				additions <- cbind(additions, c(lp[2], rp[2]))
+				r_low <- dart:::low_entry(R[,rp[2]])
+				## If updated entry has pivot still in stack, reinsert the entry and reorder
+				#if (r_low %in% filo[1,-ncol(filo)]){
+					filo_tmp <- cbind(filo[,-ncol(filo),drop=FALSE], c(r_low, rp[2]))
+					filo <- filo_tmp[,order(filo_tmp[1,], filo_tmp[2,]),drop=FALSE]
+				# } else {
+				# 	filo <- filo[,-ncol(filo),drop=FALSE]
+				# }
+			}
 		}
 	}
 	return(list(R=R,V=V,I=additions))
@@ -76,8 +106,8 @@ move_left_rv <- function(R, V, i, j){
 	indices <- c()
 	while(length(idx) != 0){
 		indices <- c(indices, idx)
-		R[,i] <- (R[,idx] + R[,i]) %% 2
-		V[,i] <- (V[,idx] + V[,i]) %% 2
+		R[,i] <- xor(R[,idx], R[,i]) 
+		V[,i] <- xor(V[,idx], V[,i]) 
 		idx <- I[tail(which(V[I, i] != 0), 1L)]
 	}
 	
@@ -87,7 +117,7 @@ move_left_rv <- function(R, V, i, j){
 	
 	## Collect indices of left-to-right column operations performed on V[,i]
 	J <- c(j, rev(indices + 1L)) # J <- J[order(apply(R[,J], 2, low_entry), decreasing = TRUE)]
-	RV_res <- restore_left(R, V, J)
+	RV_res <- restore_left2(R, V, J)
 	
 	## Donate the last column 
 	# donor_idx <- tail(J, 1L)
@@ -117,8 +147,8 @@ move_left_full <- function(R, V, i, j){
 	indices <- c()
 	while(length(idx) != 0){
 		indices <- c(indices, idx)
-		R[,i] <- (R[,idx] + R[,i]) %% 2
-		V[,i] <- (V[,idx] + V[,i]) %% 2
+		R[,i] <- xor(R[,idx], R[,i])
+		V[,i] <- xor(V[,idx], V[,i])
 		idx <- I[tail(which(V[I, i] != 0), 1L)]
 	}
 	
@@ -128,7 +158,7 @@ move_left_full <- function(R, V, i, j){
 	
 	## Indices affected by the operations
 	J <- sort(c(j, rev(indices + 1L)))
-	RV_res <- restore_left(R, V, J)
+	RV_res <- restore_left2(R, V, J)
 	
 	## Donate the last column 
 	if (length(J) > 1){
@@ -189,18 +219,20 @@ move_left <- function(R, V, i, j, dims = "all"){
 		res1 <- move_left_rv(R = R1, V = V1, i = i, j = j)
 		
 		## Compute the possible columns involved in the reduction involved R2
-		low_J <- apply(R2, 2, low_entry)
-		k <- which(low_J == i)
-		if (length(k) != 0){
-			k_low <- (j-1) + low_entry(R2[seq(j, i-1L),k])
-			J <- sort(c(k, which(low_J <= k_low))) ## can we do better?
-			print(J)
-			R2 <- permute_move(R2, i = i, j = j, dims = "rows") 
-			res2 <- restore_left(R = R2, V = V2, J = J)
-		} else {
-			R2 <- permute_move(R2, i = i, j = j, dims = "rows") 
-			res2 <- list(R=R2, V=V2, I=matrix(numeric(0L), ncol = 0))
-		}
+		R2 <- permute_move(R2, i = i, j = j, dims = "rows") 
+		res2 <- restore_left2(R = R2, V = V2, J = seq(ncol(R2)))
+		# low_J <- apply(R2, 2, low_entry)
+		# k <- which(low_J == i)
+		# if (length(k) != 0){
+		# 	k_low <- (j-1) + low_entry(R2[seq(j, i-1L),k])
+		# 	J <- sort(c(k, which(low_J <= k_low))) ## can we do better?
+		# 	# print(J)
+		# 	R2 <- permute_move(R2, i = i, j = j, dims = "rows") 
+		# 	res2 <- restore_left2(R = R2, V = V2, J = J)
+		# } else {
+		# 	R2 <- permute_move(R2, i = i, j = j, dims = "rows") 
+		# 	res2 <- list(R=R2, V=V2, I=matrix(numeric(0L), ncol = 0))
+		# }
 		
 		## Returns the new matrices 
 		num_additions <- res1$m + ncol(res2$I)
@@ -214,8 +246,8 @@ restore_right <- function(R, V, I){
 	if (length(I) <= 1){ return(list(R=R, V=V, d_colR=d_colR, d_colV=d_colV)) }
 	for (k in seq(2, length(I))){
 		{ new_d_low <- low_entry(R[,I[k]]); new_d_colR <- R[,I[k],drop=FALSE]; new_d_colV <- V[,I[k],drop=FALSE] }
-		R[,I[k]] <- (R[,I[k]] + d_colR) %% 2
-		V[,I[k]] <- (V[,I[k]] + d_colV) %% 2 
+		R[,I[k]] <- xor(R[,I[k]], d_colR)
+		V[,I[k]] <- xor(V[,I[k]], d_colV)
 		if (d_low > new_d_low){ 
 			{ d_low <- new_d_low; d_colR <- new_d_colR; d_colV <- new_d_colV }
 		}
@@ -308,6 +340,41 @@ move_right <- function(R, V, i, j, dims = "all"){
 } 
 
 ## ---- Related functions -----
+
+#' Simulate Moves
+#' @description This function applies a set of moves to a R = DV decomposition. 
+#' @param x the output of \link{reduce}. Only supports dimension-specific matrices. 
+#' @param schedule Matrix of move indices for the \code{dim} reduced matrices. 
+#' @param dim which homology dimension to apply moves too. 
+#' @details 
+#' @export
+simulate_moves <- function(x, schedule, dim, f = NULL){
+	stopifnot(inherits(x, "fbm_decomp"))
+	stopifnot(is.matrix(schedule), nrow(schedule) == 2)
+	if (is.character(attr(x, "hom_dim")) && attr(x, "hom_dim") == "all"){
+		stop("Applying moves to the full reduced matrix is not supported yet. Please use the local matrices.")
+	}
+	di <- match(dim, attr(x, "hom_dim"))
+	stopifnot(!is.na(di))
+	r1 <- x$R[[di]]
+	v1 <- x$V[[di]]
+	stopifnot(all(schedule <= ncol(r1)))
+	if (di == length(x$R)){
+		r2 <- psp_matrix(dims = c(ncol(r1),0)) 
+		v2 <- psp_matrix(dims = c(0,0))
+	} else {
+		r2 <- x$R[[di+1]]
+		v2 <- x$V[[di+1]]
+	}
+	stopifnot(inherits(r1, "PspMatrix"), inherits(r2, "PspMatrix"))
+	nr <- dart:::move_schedule_local(
+		r1 = r1$matrix$as_XPtr(), v1 = v1$matrix$as_XPtr(), 
+		r2 = r2$matrix$as_XPtr(), v2 = v2$matrix$as_XPtr(), 
+		schedule = schedule - 1L, f = f
+	)
+	return(nr)
+}
+
 
 #' move_decomp
 #' @description Moves a simplex in a boundary matrix decomposition.

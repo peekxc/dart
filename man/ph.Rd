@@ -4,7 +4,7 @@
 \alias{ph}
 \title{Persistent homology computation}
 \usage{
-ph(x, type = c("rips", "cech", "delaunay"), dims = 0:2)
+ph(x, dims = c(0L, 1L), type = c("rips", "cech", "delaunay"))
 }
 \arguments{
 \item{x}{point cloud matrix, 'dist' object, or Filtration.}

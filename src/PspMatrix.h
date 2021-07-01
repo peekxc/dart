@@ -167,14 +167,16 @@ public:
 		if (c >= n_cols()){ throw std::invalid_argument("Invalid column index"); }
 		
 		// Re-map the current indices to the original indices to maintain consistency with interface 
-		std::transform(b, e, b, [&](entry_t& el){ return make_pair(cto[el.first], el.second); });
+		// mke copy here
+		vector< entry_t > nc(b, e); 
+		std::transform(nc.begin(), nc.end(), nc.begin(), [&](entry_t& el){ return make_pair(cto[el.first], el.second); });
 		
 		// Apply the assignment
 		if (!bool(columns.at(c))){ 
-			columns.at(c) = std::make_unique< vector< entry_t > >(b,e); 
+			columns.at(c) = std::make_unique< vector< entry_t > >(nc.begin(),nc.end()); 
 		} else {
 			columns[c]->clear();
-			columns[c]->assign(b,e);
+			columns[c]->assign(nc.begin(),nc.end());
 		}
 	}
 	
@@ -202,8 +204,8 @@ public:
 			vector< entry_t >& v = *columns[j];
 			// TODO: fix this
 			// Search for the a non-zero entry in row 'r' in O(log(n)) time 
-			auto el = std::lower_bound(std::begin(v), std::end(v), r, [this](entry_t& e, size_t index){
-				return(otc[e.first] < index);
+			auto el = std::lower_bound(std::begin(v), std::end(v), cto[r], [this](entry_t& e, size_t index){
+				return(e.first < index);
 			});
 			// If not found, continue to the next column 
 			if (el == std::end(v) || otc[el->first] != r){
@@ -259,25 +261,28 @@ public:
 		if (!bool(columns.at(k))){ columns.at(k) = std::make_unique< vector< entry_t > >(); }
 				
 		// Re-map the current indices to the original indices to maintain consistency with interface 
-		std::transform(b, e, b, [&](entry_t& el){ return make_pair(cto[el.first], el.second); });
+		vector< entry_t > col_copy;
+		col_copy.reserve(std::distance(b,e));
+		std::transform(b, e, std::back_inserter(col_copy), [&](entry_t& el){ return make_pair(cto[el.first], el.second); });
 		
 		auto first1 = columns[k]->begin(), last1 = columns[k]->end();
+		auto first2 = col_copy.begin(), last2 = col_copy.end();
 		vector< entry_t > to_add; 
 		while(true){
 			if (first1 == last1){ 
-				nnz += std::distance(b, e);
-				std::copy(b, e, std::back_inserter(*columns[k])); 
+				nnz += std::distance(first2, last2);
+				std::copy(first2, last2, std::back_inserter(*columns[k])); 
 				break;
 			}
-			if (b == e){ break; }
-			if ((*first1).first == (*b).first){
-				(*first1).second = add((*first1).second, (*b).second);
-				++first1; ++b;
-			} else if ((*first1).first < (*b).first){
+			if (first2 == last2){ break; }
+			if ((*first1).first == (*first2).first){
+				(*first1).second = add((*first1).second, (*first2).second);
+				++first1; ++first2;
+			} else if ((*first1).first < (*first2).first){
 				++first1;
-			} else if ((*b).first < (*first1).first){
-				to_add.push_back((*b));
-				++b;
+			} else if ((*first2).first < (*first1).first){
+				to_add.push_back((*first2));
+				++first2;
 			} else {
 				throw std::logic_error("Invalid case");
 			}
@@ -444,13 +449,17 @@ public:
 	void permute_cols(Iter b, const Iter e){
 		const size_t n = std::distance(b,e);
 		if (n != n_cols()){ throw std::invalid_argument("Permutation must match number of columns."); }
-		
+		vector< size_t > p(b,e);
+		apply_permutation(columns.begin(), columns.end(), p.begin());
 		// Map the columns pointers to a new vector
-		vector< entries_ptr > p(n);
-		for (size_t i = 0; b != e; ++b, ++i){
-			std::swap(p[i], columns[*b]);
-		}	
-		std::move(p.begin(), p.end(), columns.begin());
+		// vector< entries_ptr > p(n);
+		// for (size_t i = 0; b != e; ++b, ++i){
+		// 	std::swap(p[i], columns[*b]);
+		// }	
+		// std::move(p.begin(), p.end(), columns.begin());
+	}
+	void permute_cols(const vector< size_t > p){
+		this->permute_cols(p.begin(), p.end());
 	}
 	
 	template< typename Iter >

@@ -4,7 +4,7 @@ output: html_notebook
 ---
 
 
-```{r}
+```{r move left test}
 library(simplextree)
 library(dart)
 
@@ -37,14 +37,14 @@ suppressWarnings({
 	} 
 })
 
-
 ```
+
 ```{r debugging moves}
 ## Apply random permutation to D 
 set.seed(1234)
 
 use_R <- FALSE
-R <- dart::r_rips_complex(10, radius = 0.35, dim = 2)
+R <- dart::r_rips_complex(12, radius = 0.35, dim = 2)
 # R <- dart::r_rips_complex(10, radius = 0.25, dim = 2)
 
 if (R$dimension == 1 || R$n_simplices[3] <= 1){ 
@@ -59,8 +59,18 @@ RV <- dart::reduce(D, options = c(clearing=TRUE), validate = TRUE)
 
 Rl <- lapply(RV$R, function(m) as(m, "sparseMatrix"))
 Vl <- lapply(RV$V, function(m) as(m, "sparseMatrix"))
+
+## Test sparsely sampled pairs 
+indices <- seq(ncol(Rl[[1]]))
+i <- sample(indices, size = 1000L, replace = TRUE)
+j <- sample(indices, size = 1000L, replace = TRUE)
+move_idx <- rbind(i,j)
+move_idx <- rbind(pmin(i,j), pmax(i,j))
+
+
+## Test all pairs
 move_idx <- combn(ncol(Rl[[1]]), 2)
-move_idx <- move_idx[c(2,1),]
+# move_idx <- move_idx[c(2,1),]
 
 coerce_field <- function(x){ x %% 2L }
 is_tri <- function(v) { as.logical(Matrix::isTriangular(v)) }
@@ -142,12 +152,130 @@ suppressWarnings({
 # dart::validate_decomp()
 ```
 
-```{r}
+
+
+
+```{r Medium test both}
+set.seed(1234)
+
 library(dart)
-x <- tdaunif::sample_circle(150, sd = 0.5)
+x <- tdaunif::sample_circle(16, sd = 0.5)
 fi <- rips_filtration(x, dim = 2)
-D <- boundary_matrix(fi)
+D <- boundary_matrix(fi, dims = 0:2)
 RV <- reduce(D, validate = FALSE, show_progress = TRUE)
+
+## Test mix of lefts and rights moves
+{
+	i <- sample(seq(fi$complex$n_simplices[2]), size = 100L, replace = TRUE)
+	j <- sample(seq(fi$complex$n_simplices[2]), size = 100L, replace = TRUE)
+	S <- rbind(i, j)
+	R <- lapply(RV$R, function(m) as(m, "sparseMatrix"))[2:3]
+	V <- lapply(RV$V, function(m) as(m, "sparseMatrix"))[2:3]
+	for (ii in seq(ncol(S))){
+		rv <- move_decomp(R = R, V = V, i = S[1,ii], j = S[2,ii])
+		R <- rv$R
+		V <- rv$V
+		print(ii)
+	}
+}
+
+
+
+dart::simulate_moves(RV, schedule = S, dim = 1L)
+
+## Test move right (<-- the issue)
+for (seed in seq(100)){
+	set.seed(seed)
+
+	library(dart)
+	x <- tdaunif::sample_circle(12, sd = 0.5)
+	fi <- rips_filtration(x, dim = 2)
+	D <- boundary_matrix(fi, dims = 0:2)
+	
+	set.seed(23)
+	RV <- reduce(D, validate = FALSE, show_progress = TRUE)
+	i <- sample(seq(fi$complex$n_simplices[2]), size = 150L, replace = TRUE)
+	j <- sample(seq(fi$complex$n_simplices[2]), size = 150L, replace = TRUE)
+	# S <- rbind(i,j)
+	# S <- rbind(pmin(i,j), pmax(i,j))
+	S <- rbind(pmax(i,j), pmin(i,j))
+	cc <- 0L
+	dart::simulate_moves(RV, schedule = S, dim = 1L, f = function(){
+		cc <<- cc + 1L
+		r1_reduced <- is_reduced(RV$R[[2]])
+		r2_reduced <- is_reduced(RV$R[[3]])
+		print(sprintf("%d: (%d -> %d): r1 reduced: %s, r2 reduced: %s", 
+									cc, S[1,cc], S[2,cc], r1_reduced, r2_reduced))
+		if (!r1_reduced || !r2_reduced){
+			# print(which(duplicated(pivots(RV$R[[3]])[,1])))
+			stop("invalid")
+		}
+		RV$R[[2]]$matrix$clean(0)
+		RV$R[[3]]$matrix$clean(0)
+		RV$V[[2]]$matrix$clean(0)
+		RV$V[[3]]$matrix$clean(0)
+		#Rc <<- lapply(RV$R, function(m) as(m, "sparseMatrix"))[2:3]
+		#Vc <<- lapply(RV$V, function(m) as(m, "sparseMatrix"))[2:3]
+		return(NULL)
+	})
+}
+	# # J == 2 3 6
+	# all(as(RV$R[[3]], "sparseMatrix") == R[[2]])
+	# all(as(RV$R[[2]], "sparseMatrix") == move_decomp(Rc, Vc, S[1,cc], S[2,cc])$R[[1]])
+	# all(as(RV$R[[3]], "sparseMatrix") == move_decomp(Rc, Vc, S[1,cc], S[2,cc])$R[[2]])
+	{
+		i <- S[1,cc]
+		j <- S[2,cc]
+		
+		R1 <- R[[1]]; R2 <- R[[2]]
+		V1 <- V[[1]]; V2 <- V[[2]]
+		
+		## Perform the move on (R1, V1)
+		res1 <- dart:::move_left_rv(R = R1, V = V1, i = i, j = j)
+		
+		## Compute the possible columns involved in the reduction involved R2
+		low_J <- apply(R2, 2, dart:::low_entry)
+		k <- which(low_J == i)
+		if (length(k) != 0){
+			k_low <- (j-1) + dart:::low_entry(R2[seq(j, i-1L),k])
+			J <- sort(c(k, which(low_J <= k_low))) ## can we do better?
+			# print(J)
+			R2 <- permute_move(R2, i = i, j = j, dims = "rows") 
+			res2 <- restore_left2(R = R2, V = V2, J = J)
+		} else {
+			R2 <- permute_move(R2, i = i, j = j, dims = "rows") 
+			res2 <- list(R=R2, V=V2, I=matrix(numeric(0L), ncol = 0))
+		}
+	
+	}
+
+	
+	# r2 <- R[[2]]
+	# r2 <- dart:::restore_right(r2, V[[2]], I = c(2,3,6))$R
+	# r2 <- permute_move(r2, i = 7, j = 13, dims = "rows")
+	# r2 == as(RV$R[[3]], "sparseMatrix")
+	# 
+	# r2 <- R[[2]]
+	# r2[,3] <- xor(r2[,2], r2[,3])
+	# r2[,6] <- xor(r2[,2], r2[,6])
+	# r2 <- permute_move(r2, i = 7, j = 13, dims = "rows")
+	# all(r2 == move_right(R, V, 7, 13)$R[[2]])
+	
+	# rv <- move_decomp(R = R, V = V, i = S[1,8], j = S[2,8])
+}
+
+
+## Test move left
+i <- sample(seq(fi$complex$n_simplices[2]), size = 100L, replace = TRUE)
+j <- sample(seq(fi$complex$n_simplices[2]), size = 100L, replace = TRUE)
+S <- rbind(pmax(i,j), pmin(i,j))
+dart::simulate_moves(RV, schedule = S, dim = 1L)
+
+
+validate_decomp(RV)
+
+is_reduced(RV$R[[2]])
+is_reduced(RV$R[[3]])
 ```
 
 

@@ -302,47 +302,86 @@ for (i in seq(length(vertex_path)-1)){
 # diagram::curvedarrow(centroids[1,], centroids[2,])
 ```
 
-```{r moves reduction}
-## Deduce form the path which decompositions to save in memory
-needs_saved <- !sapply(2:nrow(path), function(i){ path[i,1] == path[i-1,2] })
-needs_saved <- path[c(FALSE, needs_saved),1]
+```{r moves planning}
 
-##  Precompute the entire sequence of moves
-saved <- list()
-M1 <- structure(list(matrix(0, ncol = 0, nrow = 2)), names = e0)
-M2 <- structure(list(matrix(0, ncol = 0, nrow = 2)), names = e0)
-bv <- as.character(e0) ## base vertex
-di <- unname(sapply(str_to_simplex(colnames(minimal_bigrades_t)), length)-1L)
-s1 <- which(di==1)
-s2 <- which(di==2)
-bigrades <- dart:::push_map(minimal_bigrades_t, m = fibers[e0,1], b = fibers[e0,2])
-p1 <- order(bigrades[s1,3])
-p2 <- order(bigrades[s2,3])
-for (i in 2:nrow(path)){
-	v <- path[i,2]
-	bigrades <- dart:::push_map(minimal_bigrades_t, m = fibers[v,1], b = fibers[v,2])
-	q1 <- order(bigrades[s1,3])
-	q2 <- order(bigrades[s2,3])
-	S1 <- greedy_min_cross2(p1, q1, strategy = "pairwise")
-	S2 <- greedy_min_cross2(p2, q2, strategy = "pairwise")
-	M1[[bv]] <- cbind(M1[[bv]], S1)
-	M2[[bv]] <- cbind(M2[[bv]], S2)
-	if (v %in% needs_saved){
-		print(sprintf("Saving: %d", v))
-		saved[[as.character(v)]] <- list(q1, q2)
-	}
-	if (i != nrow(path)){
-		if (path[i,2] != path[i+1,1]){
-			print("changing base vertex")
-			bv <- as.character(path[i+1,1]) ## change base vertex
-			p1 <- saved[[as.character(path[i+1,1])]][[1]]
-			p2 <- saved[[as.character(path[i+1,1])]][[2]]
-		} else {
-			p1 <- q1 
-			p2 <- q2
+precompute_moves <- function(path, minimal_bigrades_t){
+	
+	## Deduce form the path which decompositions to save in memory
+	needs_saved <- !sapply(2:nrow(path), function(i){ path[i,1] == path[i-1,2] })
+	needs_saved <- path[c(FALSE, needs_saved),1]
+
+	##  Precompute the entire sequence of moves
+	saved <- list()
+	M1 <- structure(list(matrix(0, ncol = 0, nrow = 2)), names = e0)
+	M2 <- structure(list(matrix(0, ncol = 0, nrow = 2)), names = e0)
+	bv <- as.character(e0) ## base vertex
+	di <- unname(sapply(str_to_simplex(colnames(minimal_bigrades_t)), length)-1L)
+	s1 <- which(di==1)
+	s2 <- which(di==2)
+	bigrades <- dart:::push_map(minimal_bigrades_t, m = fibers[e0,1], b = fibers[e0,2])
+	p1 <- order(bigrades[s1,3])
+	p2 <- order(bigrades[s2,3])
+	
+	for (i in 2:nrow(path)){
+		v <- path[i,2]
+		bigrades <- dart:::push_map(minimal_bigrades_t, m = fibers[v,1], b = fibers[v,2])
+		q1 <- order(bigrades[s1,3])
+		q2 <- order(bigrades[s2,3])
+		S1 <- greedy_min_cross2(p1, q1, strategy = "pairwise")
+		S2 <- greedy_min_cross2(p2, q2, strategy = "pairwise")
+		
+		## Records the schedules 
+		c_stops <- attr(M1[[bv]], "stops")
+		M1[[bv]] <- cbind(M1[[bv]], S1)
+		attr(M1[[bv]], "stops") <- c(c_stops, ncol(S1))
+		
+		c_stops <- attr(M2[[bv]], "stops")
+		M2[[bv]] <- cbind(M2[[bv]], S2)
+		attr(M2[[bv]], "stops") <- c(c_stops, ncol(S2))
+		
+		## Move or reset to get next vertex
+		if (v %in% needs_saved){
+			print(sprintf("Saving: %d", v))
+			saved[[as.character(v)]] <- list(q1, q2)
+		}
+		if (i != nrow(path)){
+			if (path[i,2] != path[i+1,1]){
+				print("changing base vertex")
+				bv <- as.character(path[i+1,1]) ## change base vertex
+				p1 <- saved[[as.character(path[i+1,1])]][[1]]
+				p2 <- saved[[as.character(path[i+1,1])]][[2]]
+			} else {
+				p1 <- q1 
+				p2 <- q2
+			}
 		}
 	}
+	return(list(M1=M1, M2=M2))
 }
+```
+
+```{r moves execution}
+slex_order <- match(
+	as.list(level_order(S$complex)), 
+	lapply(str_to_simplex(colnames(minimal_bigrades_t)), as.integer)
+)
+moves_nc <- 0L
+
+## Perform the sequence of moves
+for (v in names(M1)){
+	vi <- as.integer(v)
+	P <- dart:::push_map(x = minimal_bigrades_t, m = fibers[vi,1], b = fibers[vi,2])
+	fi <- filtration(S$complex, grades = P[slex_order,3])
+	rv <- reduce(boundary_matrix(fi, dims = 1:2))
+	nc <- simulate_moves(rv, schedule = M1[[v]], dim = 1L)
+	nc <- nc + simulate_moves(rv, schedule = M2[[v]], dim = 2L)
+	moves_nc <- moves_nc + nc
+}
+```
+
+
+
+```{r}
 
 # st <- simplextree::simplex_tree(str_to_simplex(fibered_filtrations[[as.integer(v)]]))
 # FI <- new(dart:::ImplicitFiltration, R$as_XPtr(), dx[rankr::rank_comb(t(R$edges), n = R$n_simplices[1])])
@@ -567,14 +606,10 @@ R <- pbgrad::
 
 tests
 
-```{r all the tests}
-library("dart")
+```{r data load}
 # X <- R.matlab::readMat("~/Downloads/n50000Dct.mat")$n50000Dct
 X <- R.matlab::readMat("~/Downloads/nk15c30Dct.mat")$nk15c30Dct
 	
-n <- 375 
-max_diam <- 0.7
-
 ## Density estimate
 # k <- 300L
 k <- 15L
@@ -583,6 +618,14 @@ knn_density <- local({
 	x_knn <- RANN::nn2(X, k = k)
 	(k/nrow(X))*(1/(Vd(ncol(X))*x_knn$nn.dists[,k]))
 })
+```
+
+
+```{r naive tests}
+library("dart")
+
+n <- 150 
+max_diam <- 1.0
 
 ## Stratified maxmin sampling of X
 sample_idx <- stratified_sample(X, m = n, f = knn_density)
@@ -866,6 +909,325 @@ for (b in bin_sizes){
 	print(vineyard_nc)
 }
 ```
+
+
+<!-- #S <- sparse_rips_filtration(dx, alpha = max_diam, dim = 2L, epsilon = 0.0) -->
+<!-- # sr <- sparse_rips(dx, alpha = max_diam) -->
+<!-- # S <- sparsify_rips(sr$graph, p = sr$permutation, w = sr$radii, epsilon = 0.1,  -->
+<!-- # 									 alpha = sr$alpha, filtered = TRUE, dim = 2) -->
+<!-- # S <- sparse_rips_filtration(x, epsilon = 0.1, dim = 2L) -->
+
+```{r all tests}
+library(simplextree)
+library(dart)
+library(Matrix)
+
+## Parameters
+set.seed(1234)
+bin_sizes <- seq(8, 24, by=4)
+n <- 150 # 150 
+max_diam <- 1.0
+
+## Build the bifiltration 
+sample_idx <- stratified_sample(X, m = n, f = knn_density)
+x <- X[sample_idx,,drop=FALSE]
+dx <- geodesic_dist(x, k = 15L)
+S <- rips_filtration(dx, diameter = max_diam, dim = 2) 
+f1 <- normalize(S$grading)
+f2 <- normalize(sapply(S$simplices, function(simplex){ max(knn_density[sample_idx[simplex]]) }))
+
+nc_totals <- matrix(0, nrow = 0, ncol = 4, dimnames=list(NULL, c("bin_sizes", "r", "v", "m")))
+	
+for (b in bin_sizes){
+	xbin <- b; ybin <- b
+	
+	## Get line arrangement + dual graph 
+	ro <- bigraded_betti2(x = S$simplices, f1 = f1, f2 = f2, H = 1L, xbin = xbin, ybin = ybin, save.path = "~/pc_f.txt")
+
+	## Line arrangement + dual graph
+	LA <- dual_line_arrangement(x = ro)
+	singularities <- sapply(LA, sf::st_area) <= .Machine$double.eps
+	LA <- sf::st_geometrycollection(LA[!singularities])
+	dg <- dual_graph(LA)
+	centroids <- do.call(rbind, lapply(LA, sf::st_centroid))
+
+	## Fibers + bigrades
+	fibers <- cbind(m=centroids[,1], b=-centroids[,2]) ## use duality here
+	minimal_bigrades_t <- t(structure(
+		cbind(f1, f2), 
+		dimnames = list(unlist(simplex_to_str(S$simplices)), NULL))
+	)
+
+	## Vertex path in dual graph 
+	e0 <- which(sapply(LA, function(el) { 
+		any(apply(el[[1]], 1, function(pt){ 
+			sum(abs(pt - sf::st_bbox(LA)[c(1,4)])) < .Machine$double.eps }))
+		})
+	)[1]
+	G2 <- local({
+		S_dist <- apply(dg, 1, function(e){
+			bi0 <- dart:::push_map(minimal_bigrades_t, m = fibers[e[1],1], b = fibers[e[1],2])
+			bi1 <- dart:::push_map(minimal_bigrades_t, m = fibers[e[2],1], b = fibers[e[2],2])
+		  spearman_dist(order(bi0[,3]), order(bi1[,3]))
+		})
+	
+		## Build the MST 2-approximation
+		G1 <- igraph::graph.empty(n = nrow(centroids), directed = FALSE)
+		for (i in seq(nrow(dg))){
+			G1 <- igraph::add_edges(G1, dg[i,], weight = S_dist[i])
+		}
+		mst_path <- igraph::mst(G1, weights = igraph::E(G1)$weight)
+		el <- igraph::as_edgelist(mst_path)
+		igraph::graph_from_edgelist(rbind(el, el[,2:1]), directed = TRUE)
+	})
+	vertex_path <- as.vector(unlist(igraph::dfs(G2, root = e0, neimode = "out")$order))
+	
+	## Eulerian path from the vertex order
+	path <- cbind(NA, vertex_path[1])
+	visited <- c(vertex_path[1])
+	for (vi in seq(2, length(vertex_path))){
+		nv <- vertex_path[vi]
+		neighbors <- as.vector(igraph::adjacent_vertices(G2, nv)[[1]])
+		visited_neighbors <- neighbors[neighbors %in% visited]
+		if (length(visited_neighbors) == 1){
+			path <- rbind(path, c(visited_neighbors, nv))
+			visited <- c(visited, nv)
+		} else {
+			neighbor_dist <- apply(cbind(nv, visited_neighbors), 1, function(x){
+				K_dist[simplex_to_str(sort(x))]
+			})
+			nearest_neighbor <- visited_neighbors[which.min(neighbor_dist)]
+			path <- rbind(path, c(nearest_neighbor, nv))
+			visited <- c(visited, nv)
+		}
+	}
+
+	## Deduce from the path which decompositions to save in memory
+	needs_saved <- !sapply(2:nrow(path), function(i){ path[i,1] == path[i-1,2] })
+	needs_saved <- path[c(FALSE, needs_saved),1]
+	saved <- list()
+	
+	## Get the fiber for the first filtration
+	bv <- as.character(e0) ## base vertex
+	P <- dart:::push_map(minimal_bigrades_t, m = fibers[e0,1], b = fibers[e0,2])
+	p <- order(P[,3])
+	rv_base <- reduce(boundary_matrix(filtration(S$complex, grades = p)))
+	
+	## Measure operations for naive reductions 
+	reduce_nc <- 0L
+	{
+		for (v in vertex_path){
+			bigrades <- dart:::push_map(minimal_bigrades_t, m = fibers[v,1], b = fibers[v,2])
+			fi <- filtration(S$complex, bigrades[,3])
+			rv <- reduce(boundary_matrix(fi, dims = 1:2), show_progress = FALSE)
+			reduce_nc <- reduce_nc + rv$nc
+		}
+	}
+	
+	## Measure operations for vineyard updates 
+	vineyard_nc <- 0L
+	R_psp <- rv_base$R
+	V_psp <- rv_base$V
+	{
+		for (i in 2:nrow(path)){
+			v <- path[i,2]
+			Q <- dart:::push_map(minimal_bigrades_t, m = fibers[v,1], b = fibers[v,2])
+			q <- order(Q[,3])
+			schedule <- local({
+				sch <- vineyards_schedule(S$simplices[p], S$simplices[q])
+				if (is.matrix(sch)){ return(sch) }
+				pmin(sch$schedule[1,], sch$schedule[2,])
+			})
+	
+			vineyard_nc <- vineyard_nc + dart:::simulate_vineyard_pspbool(
+				R_ptr = R_psp$matrix$as_XPtr(), V_ptr = V_psp$matrix$as_XPtr(), 
+				schedule = schedule - 1L, show_progress = FALSE)
+			if (v %in% needs_saved){
+				print(sprintf("Saving: %d", v))
+				saved[[as.character(v)]] <- fibers[v,]
+			}
+			if (i != nrow(path)){
+				if (path[i,2] != path[i+1,1]){
+					print("changing base vertex")
+					bv <- as.character(path[i+1,1]) ## change base vertex
+					c_fiber <- saved[[as.character(path[i+1,1])]]
+					P <- dart:::push_map(minimal_bigrades_t, m = c_fiber[1], b = c_fiber[2])
+					p <- order(P[,3])
+					fi <- filtration(S$complex, grades = P[,3])
+					D <- boundary_matrix(fi)
+					R_psp <- psp_matrix(x=D$matrix)
+					V_psp <- dart::psp_matrix(x = Matrix::Diagonal(ncol(D$matrix)))
+					## Don't count resets 	
+					nc_local <- dart:::reduce_pspbool(R_psp$matrix$as_XPtr(), V_psp$matrix$as_XPtr(), show_progress = TRUE)
+					# vineyard_nc <- vineyard_nc
+				} else {
+					p <- q
+				}
+			}
+		}
+	} ## end vineyards updates 
+	
+	## Start move updates 
+	moves_nc <- 0L
+	{
+		schedule <- precompute_moves(path, minimal_bigrades_t) 
+		slex_order <- match(
+			ltraverse(level_order(S$complex), as.integer),
+			unname(lapply(str_to_simplex(colnames(minimal_bigrades_t)), as.integer)) 
+		)
+		for (v in names(schedule$M1)){
+			vi <- as.integer(v)
+			P <- dart:::push_map(x = minimal_bigrades_t, m = fibers[vi,1], b = fibers[vi,2])
+			fi <- filtration(S$complex, grades = P[slex_order,3])
+			## don't count these; in real situation would not recompute but save them along path
+			rv <- reduce(boundary_matrix(fi, dims = 1:2), show_progress = FALSE) 
+			nc <- simulate_moves(rv, schedule = schedule$M1[[v]], dim = 1L)
+			nc <- nc + simulate_moves(rv, schedule = schedule$M2[[v]], dim = 2L)
+			moves_nc <- moves_nc + nc
+		}
+	}
+	
+	## Save totals 
+	nc_totals <- rbind(nc_totals, c(b, reduce_nc, vineyard_nc, moves_nc))
+	print(nc_totals)
+}
+```
+
+
+```{r Extracting the fibered barcode}
+schedule <- precompute_moves(path, minimal_bigrades_t) 
+slex_order <- match(
+	ltraverse(level_order(S$complex), as.integer),
+	unname(lapply(str_to_simplex(colnames(minimal_bigrades_t)), as.integer)) 
+)
+if (any(is.na(slex_order))){ stop("bad") }
+
+## Globals 
+di <- unname(sapply(str_to_simplex(colnames(minimal_bigrades_t)), length)-1L)
+s1 <- which(di==1)
+s2 <- which(di==2)
+	
+## Prepre template points
+template_points <- structure(vector("list", length(vertex_path)), names = vertex_path)
+
+## Save initial vertex
+v <- vertex_path[1]
+P <- dart:::push_map(x = minimal_bigrades_t, m = fibers[v,1], b = fibers[v,2])
+fi <- filtration(S$complex, grades = P[slex_order,3])
+rv <- reduce(boundary_matrix(fi, dims = 1:2), show_progress = FALSE) 
+template_points[[as.character(v)]] <- read_barcodes(rv, dims = 1L, essential = TRUE)
+
+p1 <- order(P[s1,3])
+p2 <- order(P[s2,3])
+
+P <- dart:::push_map(x = minimal_bigrades_t, m = fibers[2,1], b = fibers[2,2])
+fi <- filtration(S$complex, P[slex_order,3])
+q1 <- order(P[s1,3])
+q2 <- order(P[s2,3])
+S1 <- greedy_min_cross2(p1, q1, strategy = "pairwise")
+S2 <- greedy_min_cross2(p2, q2, strategy = "pairwise")
+simulate_moves(rv, schedule = S1, dim = 1L)
+simulate_moves(rv, schedule = S2, dim = 2L)
+
+## Validate decomposition under new filtration 
+validate_decomp(rv, boundary_matrix(fi, dims = 1:2))
+
+## Record the template points
+bc2 <- read_barcodes(
+	rv, dims = 1L, values = lapply(1:2, fi$k_grades), 
+	essential = TRUE
+)
+
+## Versus 2
+P <- dart:::push_map(x = minimal_bigrades_t, m = fibers[2,1], b = fibers[2,2])
+fi <- filtration(S$complex, grades = P[slex_order,3])
+rv <- reduce(boundary_matrix(fi, dims = 1:2), show_progress = FALSE) 
+bc2_ <- read_barcodes(
+	rv, dims = 1L, values = lapply(1:2, fi$k_grades),
+	essential = TRUE
+)
+validate_decomp(rv, boundary_matrix(fi, dims = 1:2))
+
+for (v in vertex_path[-1]){
+	P <- dart:::push_map(x = minimal_bigrades_t, m = fibers[v,1], b = fibers[v,2])
+	fi <- filtration(S$complex, P[slex_order,3])
+	q1 <- order(P[s1,3])
+	q2 <- order(P[s2,3])
+	S1 <- greedy_min_cross2(p1, q1, strategy = "pairwise")
+	S2 <- greedy_min_cross2(p2, q2, strategy = "pairwise")
+	simulate_moves(rv, schedule = S1, dim = 1L)
+	simulate_moves(rv, schedule = S2, dim = 2L)
+	
+	## Record the template points
+	template_points[[as.character(v)]] <- read_barcodes(
+		rv, dims = 1L, values = lapply(1:2, fi$k_grades), 
+		essential = TRUE
+	)
+	
+	## Reassign previous permutations
+	p1 <- q1 
+	p2 <- q2
+}
+
+simplices <- unname(lapply(str_to_simplex(colnames(minimal_bigrades_t)), as.integer)) 
+P <- dart:::push_map(x = minimal_bigrades_t, m = fibers[5,1], b = fibers[5,2])
+fi <- filtration(simplices, grades = P[,3])
+rv <- reduce(boundary_matrix(fi, dims = 1:2), show_progress = FALSE) 
+k_grades <- lapply(1:2, function(k){ fi$k_grades(k) })
+bc <- read_barcodes(rv, dims = 1L, essential = FALSE, values = k_grades)
+
+pbgrad::plot_dgm(bc)
+
+## 2 
+P <- dart:::push_map(x = minimal_bigrades_t, m = fibers[2,1], b = fibers[2,2])
+fi <- filtration(S$complex, grades = P[slex_order,3])
+rv <- reduce(boundary_matrix(fi, dims = 1:2), show_progress = FALSE) 
+bc2 <- read_barcodes(rv, dims = 1L, values = lapply(1:2, fi$k_grades), essential = TRUE)
+
+
+
+head(read_barcodes(rv, dims = 1L, essential = TRUE, values = k_grades))
+head(template_points[[as.character(5)]])
+
+# P[match(as.list(faces(fi$complex, c(126,130,142))), simplices),]
+
+fi_idx <- match(as.list(faces(fi$complex, c(126,130,142))), fi$simplices)
+fi$grading[fi_idx]
+P[match(as.list(faces(fi$complex, c(126,130,142))), simplices),3]
+
+s_test <- list(1,2,3,c(1,2),c(2,3),c(1,3),c(1,2,3),4,c(2,4),c(1,4),c(1,2,4))
+g_test <- seq_along(s_test)*0.10
+fi <- filtration(s_test, g_test)
+random_idx <- sample(seq_along(s_test))
+fi <- filtration(s_test[random_idx], g_test[random_idx])
+
+# sapply(simplices, function(simplex) any(is.na(simplex)))
+
+bc2 <- read_barcodes(rv, dims = 1L, essential = TRUE, values = lapply(1:2, function(k){ fi$k_grades(k) }))
+
+head()
+
+# for (v in names(schedule$M1)){
+# 	vi <- as.integer(v)
+# 	P <- dart:::push_map(x = minimal_bigrades_t, m = fibers[vi,1], b = fibers[vi,2])
+# 	fi <- filtration(S$complex, grades = P[slex_order,3])
+# 	rv <- reduce(boundary_matrix(fi, dims = 1:2), show_progress = FALSE) 
+# 	
+# 	
+# 	stop_pts <- sort(attr(schedule$M1[[v]], "stops"))
+# 	simulate_moves(rv, schedule = schedule$M1[[v]], dim = 1L, f = function(){
+# 			
+# 	})
+# 	nc <- nc + simulate_moves(rv, schedule = schedule$M2[[v]], dim = 2L)
+# }
+
+
+## Just need to get the polygon/barcodes containing the point whose dual is L, then apply 
+## push_L(a,b) for every (a,b) in the barcode template. Use the simplices + index persistence and projected order 
+## to figure out the barcode template push map 
+sf::st_intersects(sf::st_point(c(3.5, -0.5)), sf::st_collection_extract(LA, "POLYGON"), sparse=TRUE)[[1]]
+```
+
 
 ```{r}
 lm_idx <- landmark::landmarks_maxmin(X, num = 150, seed_index = which.min(d_left))

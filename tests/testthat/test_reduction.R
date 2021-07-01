@@ -308,3 +308,25 @@ sum(combn(nrow(x), 4, include_simplex))
 sum(combn(nrow(x), 2, function(idx) max(dx[idx[1], idx[2]]) <= 0.55))
 sum(combn(nrow(x), 3, function(idx) max(dx[idx[1], idx[2]]) <= 0.55))
 sum(combn(nrow(x), 4, function(idx) max(dx[idx[1], idx[2]]) <= 0.55))
+
+## Test move right 
+set.seed(1234)
+x <- replicate(3, runif(10))
+R <- rips_filtration(x, diameter = 1.0, dim = 2)
+D <- boundary_matrix(R, dims = 1:2)
+rv <- reduce(D)
+
+testD1 <- as(D$matrix[[1]] %% 2, "lgCMatrix")
+testR1 <- as((testD1 %*% as(rv$V[[1]], "sparseMatrix")) %% 2, "lgCMatrix")
+moveR1 <- as(rv$R[[1]], "sparseMatrix")
+all(testR1 == moveR1)
+
+simulate_moves(rv, matrix(1:2, ncol = 1), dim = 1)
+testD2 <- permute_move(testD1, i = 1, j = 2, dims = "cols")
+testR2 <- as((testD2 %*% as(rv$V[[1]], "sparseMatrix")) %% 2, "lgCMatrix")
+moveR2 <- as(rv$R[[1]], "sparseMatrix")
+all(testR2 == moveR2)
+
+validate_decomp(rv, D)
+
+

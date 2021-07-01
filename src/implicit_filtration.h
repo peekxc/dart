@@ -28,10 +28,11 @@ struct ImplicitFiltration {
 	const size_t m; 									 // number of total simplices 
 	const size_t n; 									 // number of vertices
 	const size_t d; 									 // dimension of complex + 1
-	const vector< double > grades;		 // filtration grades; size depends on complex
+	const vector< double > grades;		 // filtration grades; size depends on complex, stored in shortlex order
 	const vector< idx_t > labels;			 // vertex original labels
 	vector< uint_fast64_t > ranks;     // simplex ranks 
-	vector< size_t > indexes;          // simplex positions
+	vector< size_t > indexes;          // simplex positions; permutation that rearranges filtration into shortlex order
+	vector< size_t > indexes_inv;			 // inverse permutation of indexes
 	vector< uint_least8_t > dims;			 // simplex dimensions
 	vector< size_t > n_simplexes; 		 // number of simplices of each dimension
 	vector< size_t > cum_ns; 
@@ -102,6 +103,10 @@ struct ImplicitFiltration {
 			apply_permutation(ranks.begin(), ranks.end(), p.begin());
 			p = indexes;
 			apply_permutation(dims.begin(), dims.end(), p.begin());
+			// if (type == filt_t::GENERIC){
+			// 	p = indexes;
+			// 	apply_permutation(grades.begin(), grades.end(), p.begin());
+			// }
 		}
 // 		auto end3 = std::chrono::steady_clock::now();
 // 		std::chrono::duration<double> ms3 = (end3-start3);
@@ -110,6 +115,7 @@ struct ImplicitFiltration {
 		// Invert indexes to get O(log n) lookup using shortlex order
 		// ranks[indexes[i]] := i'th simplex in shortlex order
 		// auto start4 = std::chrono::steady_clock::now();
+		indexes_inv	= indexes;
 		{
 			auto ip = vector< size_t >(m);
 			std::iota(ip.begin(), ip.end(), 0);
@@ -230,7 +236,7 @@ struct ImplicitFiltration {
 			auto s = dart::lex_unrank(ranks[i], n, dims[i]+1);
 			return std::reduce(s.begin(), s.end(), 0.0, [this](auto i, auto j){ return std::max(grades.at(i), grades.at(j)); });
 		} else {
-			return(grades[i]);
+			return(grades[indexes_inv[i]]);
 		}
 		return(-1.0);
 	}
