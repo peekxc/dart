@@ -1,3 +1,3 @@
-## DART: Dynamic Reduction Toolkit
+## DART: DynAmic Reduction Toolkit
 
 < Under construction >
